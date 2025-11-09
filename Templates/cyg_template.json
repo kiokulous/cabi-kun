@@ -1,0 +1,61 @@
+{
+  "templateName": "Live Config",
+  "dateColumn": "report_date",
+  "dimensions": [
+    "media",
+    "campaign_name"
+  ],
+  "measures": [
+    {
+      "name": "gross cost",
+      "formula": "cost/0.8",
+      "isCalculated": true,
+      "format": "currency"
+    },
+    {
+      "name": "impression",
+      "format": "number",
+      "isCalculated": false
+    },
+    {
+      "name": "click",
+      "format": "number",
+      "isCalculated": false
+    },
+    {
+      "name": "CV",
+      "format": "number",
+      "isCalculated": false
+    },
+    {
+      "name": "ctr",
+      "formula": "click/impression",
+      "isCalculated": true,
+      "format": "percent"
+    },
+    {
+      "name": "cpc",
+      "formula": "gross cost/click",
+      "isCalculated": true,
+      "format": "currency"
+    },
+    {
+      "name": "cpm",
+      "formula": "gross cost/impression*1000",
+      "isCalculated": true,
+      "format": "currency"
+    },
+    {
+      "name": "cvr",
+      "formula": "CV/click",
+      "isCalculated": true,
+      "format": "percent"
+    },
+    {
+      "name": "cpa",
+      "formula": "gross cost/CV",
+      "isCalculated": true,
+      "format": "currency"
+    }
+  ]
+}

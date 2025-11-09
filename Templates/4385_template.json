@@ -1,0 +1,59 @@
+{
+  "templateName": "Live Config",
+  "dateColumn": "report_date",
+  "dimensions": [
+    "media"
+  ],
+  "measures": [
+    {
+      "name": "gross cost",
+      "formula": "cost*1.1",
+      "isCalculated": true,
+      "format": "currency"
+    },
+    {
+      "name": "impression",
+      "format": "number",
+      "isCalculated": false
+    },
+    {
+      "name": "click",
+      "format": "number",
+      "isCalculated": false
+    },
+    {
+      "name": "ctr",
+      "formula": "click/impression",
+      "isCalculated": true,
+      "format": "percent"
+    },
+    {
+      "name": "cpc",
+      "formula": "gross cost/click",
+      "isCalculated": true,
+      "format": "currency"
+    },
+    {
+      "name": "媒体CV",
+      "format": "number",
+      "isCalculated": false
+    },
+    {
+      "name": "媒体CPA",
+      "formula": "gross cost/媒体CV",
+      "isCalculated": true,
+      "format": "currency"
+    },
+    {
+      "name": "install",
+      "format": "number",
+      "isCalculated": false
+    },
+    {
+      "name": "cpi",
+      "formula": "gross cost/install",
+      "isCalculated": true,
+      "format": "currency"
+    }
+  ]
+}

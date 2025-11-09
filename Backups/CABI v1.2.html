@@ -1,0 +1,1503 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CABI-KUN</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jschardet/2.3.0/jschardet.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
+
+    <style>
+        :root {
+            --left-panel-width: 340px;
+            --right-panel-width: 320px;
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            font-size: 14px;
+        }
+        .main-container { display: grid; grid-template-columns: var(--left-panel-width) 1px 1fr 1px var(--right-panel-width); height: 100vh; overflow: hidden; }
+        .panel { background-color: #ffffff; display: flex; flex-direction: column; overflow: hidden; transition: width 0.3s ease, min-width 0.3s ease; }
+        .panel-content { flex-grow: 1; overflow-y: auto; overflow-x: hidden; }
+        .resizer { background-color: #e5e7eb; cursor: col-resize; width: 1px; z-index: 9; }
+        .resizer:hover { background-color: #10b981; width: 3px; margin: 0 -1px; }
+        .left-panel.collapsed, .right-panel.collapsed { width: 0; min-width: 0; padding: 0; }
+        .collapse-btn { position: absolute; top: 50%; transform: translateY(-50%); background-color: #fff; border: 1px solid #e5e7eb; border-radius: 50%; width: 24px; height: 24px; z-index: 10; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        #left-collapse-btn { left: var(--left-panel-width); margin-left: -12px; }
+        #right-collapse-btn { right: var(--right-panel-width); margin-right: -12px; }
+        .left-panel.collapsed + .resizer + .center-panel + .resizer + .right-panel + #left-collapse-btn { left: 0; }
+
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        ::-webkit-scrollbar-thumb { background: #a8a8a8; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #888; }
+
+        .interactive-button { transition: all 0.2s ease-in-out; }
+        .interactive-button:hover { transform: translateY(-1px); box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+        .interactive-button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; }
+        .loader { border: 4px solid #f3f3ff; border-top: 4px solid #10b981; border-radius: 50%; width: 30px; height: 30px; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        #loading-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(255, 255, 255, 0.9); display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 1000; }
+        
+        .column-list { max-height: 160px; overflow-y: auto; border: 1px solid #d1d5db; border-radius: 0.5rem; padding: 0.5rem; background-color: #f9fafb; }
+        .column-list label { display: flex; align-items: center; padding: 0.25rem 0.5rem; border-radius: 0.375rem; transition: background-color 0.2s ease; font-size: 12px; }
+        .column-list label:hover { background-color: #f0fdf4; }
+        .column-list input[type="checkbox"] { width: 0.875rem; height: 0.875rem; border-radius: 0.25rem; border-color: #9ca3af; color: #10b981; flex-shrink: 0; }
+        .column-list .measure-format-select { font-size: 11px; padding: 2px; border-radius: 4px; margin-left: auto; background-color: #f3f4f6; border-color: #d1d5db; }
+        .delete-calc-field-btn { background: none; border: none; color: #ef4444; cursor: pointer; margin-left: 8px; padding: 0; font-size: 14px; line-height: 1; }
+        .delete-calc-field-btn:hover { color: #b91c1c; }
+
+        #formula-input { border: 1px solid #d1d5db; padding: 0.5rem; border-radius: 0.375rem; min-height: 40px; }
+        #formula-input:focus { outline: 2px solid transparent; outline-offset: 2px; border-color: #10b981; box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.5); }
+        #formula-suggestions { border: 1px solid #d1d5db; border-top: none; border-radius: 0 0 0.375rem 0.375rem; max-height: 150px; overflow-y: auto; background-color: white; z-index: 20; }
+        .suggestion-item { padding: 0.5rem; cursor: pointer; }
+        .suggestion-item:hover { background-color: #f0fdf4; }
+        
+        .nav-link-active { background-color: #ecfdf5; color: #059669; font-weight: 600; }
+        .custom-select { appearance: none; -webkit-appearance: none; -moz-appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%2310b981' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 0.5rem center; background-size: 1.25em; padding-right: 2.5rem; }
+        .custom-select:focus { outline: none; border-color: #10b981; box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.5); }
+        .app-page { display: none; }
+        .app-page.active { display: block; }
+    </style>
+    <style>
+        .sort-indicator {
+            display: inline-block;
+            margin-left: 6px;
+            color: #9ca3af; /* gray-400 */
+            opacity: 0.5;
+            transition: opacity 0.2s;
+        }
+        #toast-container { position: fixed; bottom: 1rem; left: 1rem; z-index: 1000; display: flex; flex-direction: column; gap: 0.5rem; }
+        .toast { background-color: #2d3748; color: white; padding: 0.75rem 1.25rem; border-radius: 0.5rem; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06); opacity: 0; transform: translateY(20px); transition: opacity 0.3s ease, transform 0.3s ease; }
+        .toast.show { opacity: 1; transform: translateY(0); }
+        .toast.success { background-color: #2f855a; }
+        .toast.error { background-color: #c53030; }
+        .toast.info { background-color: #2b6cb0; }
+
+
+        th.sortable-header.active .sort-indicator { color: #10b981; opacity: 1; }
+    </style>
+</head>
+<body class="bg-slate-100 text-slate-700 text-sm">
+
+    <div id="loading-overlay" style="display: none;"><div class="loader"></div><p id="loading-text" class="mt-3 font-semibold text-slate-600">Loading...</p></div>
+
+    <div id="app-container" class="main-container">
+        <!-- Left Panel -->
+        <aside id="left-panel" class="panel">
+            <div class="p-3 border-b flex-shrink-0"><h1 class="text-lg font-bold bg-gradient-to-r from-green-500 to-emerald-500 bg-clip-text text-transparent" data-i18n="appTitle">CABI-KUN</h1></div>
+            <div class="panel-content p-3 space-y-5">
+                <div id="initial-setup-view">
+                    <div id="file-upload-section">
+                        <h3 class="font-bold text-base mb-2 flex items-center gap-2"><span class="bg-green-500 text-white rounded-full h-6 w-6 flex items-center justify-center font-bold text-xs">1</span><span data-i18n="homeUploadTitle">Upload CSV Files</span></h3>
+                        <input type="file" id="csv-files-input" multiple class="hidden" accept=".csv">
+                        <button id="select-files-btn" class="interactive-button w-full px-3 py-2 text-sm font-semibold rounded-lg bg-white text-slate-700 border border-slate-300 hover:bg-slate-50" data-i18n="homeSelectFiles">Select Files</button>
+                        <div id="file-list" class="mt-2 text-xs space-y-1"></div>
+                        <div id="processing-status" class="mt-2 text-xs font-semibold"></div>
+                    </div>
+                </div>
+
+                <div id="template-config-section" class="hidden space-y-3">
+                    <h3 class="font-bold text-base mb-2 flex items-center gap-2"><span class="bg-green-500 text-white rounded-full h-6 w-6 flex items-center justify-center font-bold text-xs">2</span><span data-i18n="homeTemplateConfigTitle">Configure Template</span></h3>
+                    <div class="space-y-2">
+                        <input type="file" id="template-files-input" class="hidden" accept=".json">
+                        <button id="load-templates-btn" class="interactive-button w-full px-3 py-2 text-sm font-semibold rounded-lg bg-white text-slate-700 border border-slate-300 hover:bg-slate-50" data-i18n="homeSelectFolder">Load Existing Template</button>
+                        <button id="save-template-btn" class="interactive-button w-full px-3 py-2 text-sm font-semibold rounded-lg bg-green-600 text-white" data-i18n="save">Save as New Template</button>
+                    </div>
+                    <hr/>
+                    <div class="space-y-3">
+                        <div>
+                            <label for="template-date-column" class="font-semibold text-xs mb-1 block" data-i18n="modalDateColumn">Date Column (Required)</label>
+                            <select id="template-date-column" class="w-full custom-select px-3 py-2 text-sm rounded-lg border-2 border-slate-300 focus:ring-2 focus:ring-green-500"></select>
+                        </div>
+                        <div>
+                            <label class="font-semibold text-xs mb-1 block" data-i18n="modalDimensions">Dimensions</label>
+                            <input type="text" id="dimension-search-input" placeholder="Search dimensions..." class="w-full px-3 py-1.5 mb-1 text-xs rounded-lg border border-slate-300">
+                            <div id="dimension-checkbox-list" class="column-list"></div>
+                        </div>
+                        <div>
+                            <label class="font-semibold text-xs mb-1 block" data-i18n="modalMeasures">Measures</label>
+                            <input type="text" id="measure-search-input" placeholder="Search measures..." class="w-full px-3 py-1.5 mb-1 text-xs rounded-lg border border-slate-300">
+                            <div id="measure-checkbox-list" class="column-list"></div>
+                        </div>
+                        <div class="p-2 border rounded-lg bg-slate-50 space-y-2">
+                            <label class="font-semibold text-xs" data-i18n="addCalculatedField">Add Calculated Field</label>
+                            <div class="grid grid-cols-2 gap-2">
+                                <input type="text" id="calculated-field-name-input" placeholder="New column name" class="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-300">
+                                <select id="calculated-field-format-select" class="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-300">
+                                    <option value="number">Number</option>
+                                    <option value="currency">Currency</option>
+                                    <option value="percent">Percent</option>
+                                    <option value="decimal">Decimal</option>
+                                </select>
+                            </div>
+                            <div class="relative">
+                                <div id="formula-input" contenteditable="true" class="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-300 bg-white" data-placeholder="Formula (e.g., cost / impression * 1000)"></div>
+                                <div id="formula-suggestions" class="absolute w-full hidden"></div>
+                            </div>
+                            <button id="add-calculated-field-confirm-btn" class="interactive-button w-full text-xs px-3 py-1.5 font-semibold rounded-lg bg-emerald-500 text-white">Add</button>
+                        </div>
+                    </div>
+                     <button id="reset-template-config-btn" class="interactive-button w-full text-xs px-3 py-2 font-semibold rounded-lg bg-slate-600 text-white" data-i18n="resetConfig">Reset Configuration</button>
+                </div>
+                <div id="analysis-ready-view" class="hidden space-y-4 text-center">
+                    <h3 class="font-bold text-base" data-i18n="analysisReadyTitle">Ready for Analysis</h3>
+                    <p class="text-xs text-slate-500" data-i18n="analysisReadyMsg">Data and template are loaded. Select a view from the right panel to begin.</p>
+                </div>
+            </div>
+        </aside>
+
+        <div id="resizer-left" class="resizer"></div>
+        
+        <main id="center-panel" class="panel bg-slate-100">
+            <header id="dashboard-header" class="p-2 flex justify-end items-center gap-4 bg-white border-b flex-shrink-0 hidden">
+                <div class="flex items-center justify-center space-x-2">
+                    <span class="font-medium text-xs">JA</span>
+                    <label class="flex items-center cursor-pointer">
+                        <div class="relative">
+                            <input type="checkbox" id="language-toggle" class="sr-only">
+                            <div class="block bg-slate-200 w-9 h-5 rounded-full"></div>
+                            <div class="dot absolute left-0.5 top-0.5 bg-white w-4 h-4 rounded-full transition"></div>
+                        </div>
+                    </label>
+                    <span class="font-medium text-xs">EN</span>
+                </div>
+                <div class="flex items-center justify-center">
+                    <button id="currency-toggle-btn" class="interactive-button w-9 h-5 rounded-full bg-slate-200 text-xs font-bold text-slate-700 flex items-center justify-center" data-currency="JPY">¥</button>
+                </div>
+            </header>
+            <div class="panel-content p-3 md:p-4">
+                <div id="app-content">
+                    <div id="home-page" class="app-page active">
+                        <div class="max-w-2xl mx-auto text-center mt-12">
+                            <h2 class="text-2xl font-bold text-slate-700" data-i18n="homeTitle">Start Your Data Analysis</h2>
+                            <p class="text-slate-500 mt-1" data-i18n="homeSubtitle">Upload CSV files to begin configuring your template.</p> 
+                        </div>
+                    </div>
+                    <div id="analysis-page" class="app-page space-y-4">
+                        <div id="chart-view-container" class="hidden space-y-4">
+                            <!-- Trend Chart Section -->
+                            <div class="bg-white p-4 rounded-lg shadow">
+                                <h3 class="font-bold text-lg mb-2" data-i18n="summaryTrendAnalysis">Trend Analysis</h3>
+                                <div class="h-80">
+                                    <canvas id="line-chart"></canvas>
+                                </div>
+                            </div>
+
+                            <!-- Pie Chart Section -->
+                            <div class="bg-white p-4 rounded-lg shadow">
+                                <h3 class="font-bold text-lg mb-2">Pie Chart</h3>
+                                <div class="grid grid-cols-2 gap-4 mb-4">
+                                    <div>
+                                        <label for="pie-dimension-select" class="font-semibold text-xs">Dimension</label>
+                                        <select id="pie-dimension-select" class="w-full mt-1 p-2 text-xs border rounded-lg custom-select"></select>
+                                    </div>
+                                    <div>
+                                        <label for="pie-measure-select" class="font-semibold text-xs">Measure</label>
+                                        <select id="pie-measure-select" class="w-full mt-1 p-2 text-xs border rounded-lg custom-select"></select>
+                                    </div>
+                                </div>
+                                <div class="h-64 flex items-center justify-center">
+                                    <canvas id="pie-chart"></canvas>
+                                </div>
+                            </div>
+
+                            <!-- Scatter Plot Section -->
+                            <div class="bg-white p-4 rounded-lg shadow">
+                                <h3 class="font-bold text-lg mb-2">Scatter Plot</h3>
+                                <div class="grid grid-cols-3 gap-4 mb-4">
+                                    <div>
+                                        <label for="scatter-x-axis" class="font-semibold text-xs">X-Axis</label>
+                                        <select id="scatter-x-axis" class="w-full mt-1 p-2 text-xs border rounded-lg custom-select"></select>
+                                    </div>
+                                    <div>
+                                        <label for="scatter-y-axis" class="font-semibold text-xs">Y-Axis</label>
+                                        <select id="scatter-y-axis" class="w-full mt-1 p-2 text-xs border rounded-lg custom-select"></select>
+                                    </div>
+                                    <div>
+                                        <label for="scatter-group-by" class="font-semibold text-xs">Group By</label>
+                                        <select id="scatter-group-by" class="w-full mt-1 p-2 text-xs border rounded-lg custom-select"></select>
+                                    </div>
+                                </div>
+                                <div class="h-96">
+                                    <canvas id="scatter-chart"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                        <div id="table-container"></div>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <div id="resizer-right" class="resizer"></div>
+        
+        <aside id="right-panel" class="panel">
+            <div class="p-3 border-b flex-shrink-0"><h2 class="text-base font-bold text-slate-800" data-i18n="controlsTitle">Controls</h2></div>
+            <div class="panel-content p-3 space-y-5">
+                <div>
+                    <h3 class="font-semibold text-xs text-slate-500 uppercase tracking-wider mb-2" data-i18n="viewsTitle">VIEWS</h3>
+                    <div id="view-buttons" class="grid grid-cols-3 gap-1">
+                        <button class="view-btn interactive-button text-xs p-2 rounded-lg font-semibold" data-view="chart">Chart</button>
+                        <button class="view-btn interactive-button text-xs p-2 rounded-lg font-semibold" data-view="daily">Daily</button>
+                        <button class="view-btn interactive-button text-xs p-2 rounded-lg font-semibold nav-link-active" data-view="table">Table</button>
+                    </div>
+                </div>
+                <div id="global-filters-section" class="space-y-3 hidden">
+                    <h3 class="font-semibold text-xs text-slate-500 uppercase tracking-wider mb-2" data-i18n="filtersTitle">Global Filters</h3>
+                    <div class="space-y-2">
+                        <div>
+                            <label for="date-range-preset-select" class="font-semibold text-xs">Date Range Presets</label>
+                            <select id="date-range-preset-select" class="w-full mt-1 p-2 text-xs border rounded-lg custom-select">
+                                <option value="custom">Custom Range</option>
+                                <option value="yesterday">Yesterday</option>
+                                <option value="last_7_days">Last 7 days</option>
+                                <option value="this_month">This month</option>
+                                <option value="last_month">Last month</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="font-semibold text-xs" data-i18n="headerMainPeriod">Period 1</label>
+                            <input type="text" id="header-date-filter-input-right" class="w-full mt-1 p-2 text-xs border rounded-lg bg-white cursor-pointer text-center font-semibold">
+                        </div>
+                        <div>
+                            <label class="font-semibold text-xs" data-i18n="headerComparisonPeriod">Comparison Period</label>
+                            <input type="text" id="comparison-date-filter-input-right" class="w-full mt-1 p-2 text-xs border rounded-lg bg-white cursor-pointer text-center font-semibold">
+                        </div>
+                        <button id="open-filter-modal-btn" class="interactive-button w-full px-3 py-1.5 font-semibold rounded-lg flex items-center gap-2 bg-white border border-slate-300 text-slate-600">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon></svg>
+                            <span data-i18n="headerFilterLabel">Filter</span>
+                            <span id="filter-count-badge" class="ml-auto px-1.5 py-0.5 text-xs font-bold rounded-full bg-green-100 text-green-700 hidden">0</span>
+                        </button>
+                    </div>
+                    <div class="space-y-2">
+                        <label class="font-semibold text-xs text-slate-600" data-i18n="headerTargetMeasureLabel">Target:</label>
+                        <select id="target-measure-select" class="custom-select text-xs block w-full p-1.5 border-slate-300 rounded-lg"></select>
+                        <input type="number" id="target-value-input" placeholder="Value" min="0" class="w-full p-1.5 text-xs border-slate-300 rounded-lg">
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <button id="left-collapse-btn" class="collapse-btn"> <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg> </button>
+        <button id="right-collapse-btn" class="collapse-btn"> <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg> </button>
+    </div>
+
+    <!-- Filter Modal -->
+    <div id="filter-modal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden items-center justify-center p-4">
+        <div class="bg-white rounded-xl shadow-lg w-full max-w-lg max-h-[90vh] flex flex-col">
+            <div class="p-4 border-b flex justify-between items-center">
+                <h3 class="text-xl font-bold" data-i18n="modalFilterTitle">Filters</h3>
+                <button id="close-filter-modal-btn" class="p-1 rounded-full hover:bg-slate-200">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-6 h-6 text-slate-500"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
+            </div>
+            <div class="p-6 flex-1 overflow-y-auto space-y-4">
+                 <div id="modal-active-filters-list" class="space-y-2"></div>
+                 <div class="border rounded-lg p-3 bg-slate-50">
+                    <h4 class="font-semibold mb-3 text-slate-700" data-i18n="addNewFilter">Add New Filter</h4>
+                    <div class="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                        <select id="filter-dimension-select" class="custom-select w-full px-3 py-2.5 rounded-lg border-2 border-slate-300 text-sm col-span-1 sm:col-span-2"></select>
+                        <select id="filter-condition-select" class="custom-select w-full px-3 py-2.5 rounded-lg border-2 border-slate-300 text-sm">
+                            <option value="contains">contains</option>
+                            <option value="not_contains">does not contain</option>
+                            <option value="exact_match">is equal to</option>
+                            <option value="not_exact_match">is not equal to</option>
+                            <option value="starts_with">starts with</option>
+                            <option value="ends_with">ends with</option>
+                        </select>
+                        <input type="text" id="filter-value-input" placeholder="Enter value" class="w-full px-3 py-2.5 rounded-lg border-2 border-slate-300 text-sm">
+                    </div>
+                    <div class="text-right mt-3">
+                        <button id="add-new-filter-btn" class="interactive-button px-4 py-2 font-semibold rounded-lg bg-green-500 text-white shadow-md hover:opacity-90 disabled:opacity-50" disabled>Add Filter</button>
+                    </div>
+                </div>
+            </div>
+             <div class="p-4 border-t flex justify-between items-center">
+                <button id="modal-reset-filters-btn" class="interactive-button px-5 py-2.5 font-semibold rounded-lg bg-white text-slate-700 border border-slate-300 hover:bg-slate-50" data-i18n="filterReset">Reset</button>
+                <button id="modal-apply-filters-btn" class="interactive-button px-5 py-2.5 font-semibold rounded-lg bg-gradient-to-r from-green-500 to-emerald-500 text-white shadow-md hover:opacity-90" data-i18n="filterApply">Apply</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Save Template Modal -->
+    <div id="save-template-modal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden items-center justify-center p-4">
+        <div class="bg-white rounded-xl shadow-lg w-full max-w-sm text-sm">
+             <div class="p-3 border-b flex justify-between items-center">
+                <h3 class="text-base font-bold" data-i18n="saveTemplateModalTitle">Save Template</h3>
+                <button id="modal-cancel-save-btn" class="p-1 rounded-full hover:bg-slate-200"> <svg class="w-5 h-5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg> </button>
+            </div>
+            <div class="p-4 space-y-3">
+                 <div>
+                    <label for="modal-template-name-input" class="font-semibold text-xs mb-1 block" data-i18n="modalTemplateName">Template Name</label>
+                    <input type="text" id="modal-template-name-input" placeholder="e.g., Monthly Report" class="w-full px-3 py-2 text-sm rounded-lg border-2 border-slate-300 focus:ring-2 focus:ring-green-500">
+                </div>
+            </div>
+            <div class="p-3 border-t flex justify-end gap-2">
+                <button id="modal-cancel-save-btn-2" class="interactive-button px-4 py-2 text-sm font-semibold rounded-lg bg-slate-200 text-slate-700">Cancel</button>
+                <button id="modal-confirm-save-btn" class="interactive-button px-4 py-2 text-sm font-semibold rounded-lg bg-green-600 text-white">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notification Container -->
+    <div id="toast-container"></div>
+
+    <!-- Notification Panel -->
+    <div id="notification-panel" class="fixed top-10 left-1/2 transform -translate-x-1/2 z-[1001] hidden">
+        <div id="notification-content" class="bg-white shadow-lg rounded-lg p-4 flex items-center">
+            <p id="notification-message" class="text-sm font-medium"></p>
+            <button id="notification-close-btn" class="ml-4 text-slate-500 hover:text-slate-700">&times;</button>
+        </div>
+    </div>
+
+<script type="module">
+    // --- App State ---
+    let allData = [], filteredData = [], csvHeaders = [], uploadedFileObjects = [], tempCalculatedFields = [];
+    let templateConfig = null, currentLanguage = 'ja', currentCurrency = 'JPY', activeView = 'table';
+    let charts = {};
+    let headerFlatpickr = null, comparisonFlatpickr = null;
+    let headerFlatpickrRight = null, comparisonFlatpickrRight = null;
+    let activeDimensionFilters = [];
+    let nextFilterId = 1;
+    let customReportConfig = { dimensions: [], measures: [] };
+    let globalTarget = { measureName: '', value: null };
+    let comparisonReportConfig = { dimensions: [], measures: [] };
+    let sortState = { column: null, direction: 'asc' };
+
+    // --- Constants ---
+    const HIDDEN_MEASURE_KEYWORDS = ['ctr', 'cvr', 'cpa', 'cpi', 'cpm', 'cpc'];
+    const CHART_COLORS_PASTEL = ['#FFADAD', '#FFD6A5', '#FDFFB6', '#CAFFBF', '#9BF6FF', '#A0C4FF', '#BDB2FF', '#FFC6FF', '#FFC6FF', '#E6E6FA', '#FFB6C1', '#F0E68C'];
+
+    // --- UI Text Translations ---
+    const uiTexts = {
+        ja: {
+            appTitle: "CABI君", homeUploadTitle: "CSVをアップロード", homeSelectFiles: "ファイルを選択", homeTemplateConfigTitle: "テンプレート設定",
+            homeSelectFolder: "既存のテンプレートを読み込む", save: "新規テンプレートとして保存", modalDateColumn: "日付列 (必須)",
+            modalDimensions: "ディメンション (分析軸)", modalMeasures: "メジャー (数値)", addCalculatedField: "計算列を追加",
+            resetConfig: "設定をリセット", saveTemplateModalTitle: "テンプレートを保存", modalTemplateName: "テンプレート名",
+            formatNumber: "数値", formatCurrency: "通貨", formatPercent: "パーセント", formatDecimal: "小数点",
+            homeTitle: "データ分析を始めよう", homeSubtitle: "CSVファイルをアップロードして、テンプレートを設定してください。",
+            analysisReadyTitle: "分析の準備ができました", analysisReadyMsg: "データとテンプレートが読み込まれました。右のパネルから表示を選択して分析を開始してください。",
+            controlsTitle: "コントロール", viewsTitle: "表示", filtersTitle: "グローバルフィルター",
+            navDashboard: "サマリー", navDaily: "日別", navComparison: "期間比較", navCustom: "カスタムレポート",
+            headerMainPeriod: "期間 1", headerComparisonPeriod: "比較期間", addNewFilter: "新しいフィルターを追加",
+            filterApply: "適用", filterReset: "リセット", modalFilterTitle: "フィルター設定", headerFilterLabel: "フィルター",
+            headerTargetMeasureLabel: "目標:",
+            summaryTrendAnalysis: "トレンド分析", summaryDetailsTitle: "詳細サマリー", tableTotal: "合計",
+            groupBy: "集計軸：", dailyTitle: "日別レポート", dailyDateHeader: "日付",
+        },
+        en: {
+            appTitle: "CABI-KUN", homeUploadTitle: "Upload CSV Files", homeSelectFiles: "Select Files", homeTemplateConfigTitle: "Configure Template",
+            homeSelectFolder: "Load Existing Template", save: "Save as New Template", modalDateColumn: "Date Column (Required)",
+            modalDimensions: "Dimensions", modalMeasures: "Measures", addCalculatedField: "Add Calculated Field",
+            resetConfig: "Reset Configuration", saveTemplateModalTitle: "Save Template", modalTemplateName: "Template Name",
+            formatNumber: "Number", formatCurrency: "Currency", formatPercent: "Percent", formatDecimal: "Decimal",
+            homeTitle: "Start Your Data Analysis", homeSubtitle: "Upload CSV files to begin configuring your template.",
+            analysisReadyTitle: "Ready for Analysis", analysisReadyMsg: "Data and template are loaded. Select a view from the right panel to begin.",
+            controlsTitle: "Controls", viewsTitle: "Views", filtersTitle: "Global Filters",
+            navDashboard: "Summary", navDaily: "Daily", navComparison: "Comparison", navCustom: "Custom Report",
+            headerMainPeriod: "Period 1", headerComparisonPeriod: "Comparison Period", addNewFilter: "Add New Filter",
+            filterApply: "Apply", filterReset: "Reset", modalFilterTitle: "Filter Settings", headerFilterLabel: "Filter",
+            headerTargetMeasureLabel: "Target:",
+            summaryTrendAnalysis: "Trend Analysis", summaryDetailsTitle: "Summary Details", tableTotal: "Total",
+            groupBy: "Group by:", dailyTitle: "Daily Report", dailyDateHeader: "Date",
+        }
+    };
+
+    // --- DOM Elements ---
+    const el = {
+        loadingOverlay: document.getElementById('loading-overlay'),
+        appContainer: document.getElementById('app-container'),
+        // Left Panel
+        initialSetupView: document.getElementById('initial-setup-view'),
+        csvFilesInput: document.getElementById('csv-files-input'),
+        selectFilesBtn: document.getElementById('select-files-btn'),
+        fileList: document.getElementById('file-list'),
+        processingStatus: document.getElementById('processing-status'),
+        templateConfigSection: document.getElementById('template-config-section'),
+        templateFilesInput: document.getElementById('template-files-input'),
+        loadTemplatesBtn: document.getElementById('load-templates-btn'),
+        saveTemplateBtn: document.getElementById('save-template-btn'),
+        templateDateColumn: document.getElementById('template-date-column'),
+        dimensionSearchInput: document.getElementById('dimension-search-input'),
+        dimensionCheckboxList: document.getElementById('dimension-checkbox-list'),
+        measureSearchInput: document.getElementById('measure-search-input'),
+        measureCheckboxList: document.getElementById('measure-checkbox-list'),
+        resetTemplateConfigBtn: document.getElementById('reset-template-config-btn'),
+        calculatedFieldNameInput: document.getElementById('calculated-field-name-input'),
+        calculatedFieldFormatSelect: document.getElementById('calculated-field-format-select'),
+        formulaInput: document.getElementById('formula-input'),
+        formulaSuggestions: document.getElementById('formula-suggestions'),
+        addCalculatedFieldConfirmBtn: document.getElementById('add-calculated-field-confirm-btn'),
+        analysisReadyView: document.getElementById('analysis-ready-view'),
+        startAnalysisBtn: document.getElementById('start-analysis-btn'),
+        // Center Panel
+        centerPanel: document.getElementById('center-panel'),
+        appContent: document.getElementById('app-content'),
+        homePage: document.getElementById('home-page'),
+        analysisPage: document.getElementById('analysis-page'),
+        chartViewContainer: document.getElementById('chart-view-container'),
+        tableContainer: document.getElementById('table-container'),
+        dashboardHeader: document.getElementById('dashboard-header'),
+        languageToggle: document.getElementById('language-toggle'),
+        currencyToggleBtn: document.getElementById('currency-toggle-btn'),
+        // Chart elements
+        pieDimensionSelect: document.getElementById('pie-dimension-select'),
+        pieMeasureSelect: document.getElementById('pie-measure-select'),
+        scatterXAxis: document.getElementById('scatter-x-axis'),
+        scatterYAxis: document.getElementById('scatter-y-axis'),
+        scatterGroupBy: document.getElementById('scatter-group-by'),
+        // Right Panel
+        rightPanel: document.getElementById('right-panel'),
+        viewButtons: document.getElementById('view-buttons'),
+        globalFiltersSection: document.getElementById('global-filters-section'),
+        dateRangePresetSelect: document.getElementById('date-range-preset-select'),
+        headerDateFilterInputRight: document.getElementById('header-date-filter-input-right'),
+        comparisonDateFilterInputRight: document.getElementById('comparison-date-filter-input-right'),
+        targetMeasureSelect: document.getElementById('target-measure-select'),
+        targetValueInput: document.getElementById('target-value-input'),
+        // Modals
+        saveTemplateModal: document.getElementById('save-template-modal'),
+        modalTemplateNameInput: document.getElementById('modal-template-name-input'),
+        modalConfirmSaveBtn: document.getElementById('modal-confirm-save-btn'),
+        modalCancelSaveBtn: document.getElementById('modal-cancel-save-btn'),
+        modalCancelSaveBtn2: document.getElementById('modal-cancel-save-btn-2'),
+        filterModal: document.getElementById('filter-modal'),
+        closeFilterModalBtn: document.getElementById('close-filter-modal-btn'),
+        modalApplyFiltersBtn: document.getElementById('modal-apply-filters-btn'),
+        modalResetFiltersBtn: document.getElementById('modal-reset-filters-btn'),
+        openFilterModalBtn: document.getElementById('open-filter-modal-btn'),
+        filterCountBadge: document.getElementById('filter-count-badge'),
+        modalActiveFiltersList: document.getElementById('modal-active-filters-list'),
+        filterDimensionSelect: document.getElementById('filter-dimension-select'),
+        filterConditionSelect: document.getElementById('filter-condition-select'),
+        filterValueInput: document.getElementById('filter-value-input'),
+        addNewFilterBtn: document.getElementById('add-new-filter-btn'),
+    };
+
+    // --- Initialization ---
+    document.addEventListener('DOMContentLoaded', () => {
+        el.loadingOverlay.style.display = 'none';
+        initEventListeners();
+        updateUIForLanguage();
+        showAnalysisPage(false);
+    });
+
+    // --- Event Listeners ---
+    function initEventListeners() {
+        // Left Panel
+        el.selectFilesBtn.addEventListener('click', () => el.csvFilesInput.click());
+        el.csvFilesInput.addEventListener('change', handleFileSelection);
+        el.loadTemplatesBtn.addEventListener('click', () => el.templateFilesInput.click());
+        el.templateFilesInput.addEventListener('change', handleTemplateFileSelection);
+        el.saveTemplateBtn.addEventListener('click', openSaveTemplateModal);
+        el.resetTemplateConfigBtn.addEventListener('click', resetTemplateConfig);
+        el.dimensionSearchInput.addEventListener('input', () => filterCheckboxList(el.dimensionSearchInput, el.dimensionCheckboxList));
+        el.measureSearchInput.addEventListener('input', () => filterCheckboxList(el.measureSearchInput, el.measureCheckboxList));
+        el.addCalculatedFieldConfirmBtn.addEventListener('click', addCalculatedField);
+        el.formulaInput.addEventListener('input', handleFormulaInput);
+        
+        // Right Panel & Header
+        el.viewButtons.addEventListener('click', (e) => {
+            const btn = e.target.closest('.view-btn');
+            if (btn) {
+                setActiveView(btn.dataset.view);
+            }
+        });
+        el.dateRangePresetSelect.addEventListener('change', handleDatePresetChange);
+        el.openFilterModalBtn.addEventListener('click', () => {
+            el.filterModal.classList.remove('hidden');
+            el.filterModal.classList.add('flex');
+        });
+        el.closeFilterModalBtn.addEventListener('click', () => {
+            el.filterModal.classList.add('hidden');
+            el.filterModal.classList.remove('flex');
+        });
+        el.modalApplyFiltersBtn.addEventListener('click', () => {
+            el.filterModal.classList.add('hidden');
+            el.filterModal.classList.remove('flex');
+            renderActiveView();
+        });
+        el.modalResetFiltersBtn.addEventListener('click', () => {
+            activeDimensionFilters = [];
+            renderActiveDimensionFilters();
+            debouncedUpdateAnalysis(); // Apply reset immediately
+        });
+        el.addNewFilterBtn.addEventListener('click', addDimensionFilter);
+        el.modalActiveFiltersList.addEventListener('click', (e) => {
+            if (e.target.classList.contains('remove-filter-btn')) {
+                const filterId = parseInt(e.target.dataset.filterId, 10);
+                activeDimensionFilters = activeDimensionFilters.filter(f => f.id !== filterId);
+                renderActiveDimensionFilters();
+            }
+        });
+        const checkAddFilterBtnState = () => {
+            el.addNewFilterBtn.disabled = !(el.filterDimensionSelect.value && el.filterValueInput.value.trim());
+        };
+        el.filterDimensionSelect.addEventListener('change', checkAddFilterBtnState);
+        el.filterValueInput.addEventListener('input', checkAddFilterBtnState);
+
+        // Modals
+        el.modalConfirmSaveBtn.addEventListener('click', confirmSaveTemplate);
+        el.modalCancelSaveBtn.addEventListener('click', closeSaveTemplateModal);
+        el.modalCancelSaveBtn2.addEventListener('click', closeSaveTemplateModal);
+        
+        // Other UI
+        el.measureCheckboxList.addEventListener('click', (e) => {
+            if (e.target.classList.contains('delete-calc-field-btn')) {
+                const fieldName = e.target.dataset.fieldName;
+                deleteCalculatedField(fieldName, e.target.closest('label'));
+            }
+        });
+        el.languageToggle.addEventListener('change', (e) => {
+            currentLanguage = e.target.checked ? 'en' : 'ja';
+            updateUIForLanguage();
+        });
+        el.currencyToggleBtn.addEventListener('click', (e) => {
+            currentCurrency = (currentCurrency === 'JPY') ? 'USD' : 'JPY';
+            e.currentTarget.textContent = (currentCurrency === 'JPY') ? '¥' : '$';
+            renderActiveView();
+        });
+        el.targetMeasureSelect.addEventListener('change', handleTargetChange);
+        el.targetValueInput.addEventListener('change', handleTargetChange);
+        document.getElementById('notification-close-btn').addEventListener('click', () => {
+            document.getElementById('notification-panel').classList.add('hidden');
+        });
+
+        // Chart controls
+        [el.pieDimensionSelect, el.pieMeasureSelect, el.scatterXAxis, el.scatterYAxis, el.scatterGroupBy].forEach(select => {
+            if(select) select.addEventListener('change', () => renderActiveView());
+        });
+    }
+    
+    function addLiveUpdateListeners() { 
+        ['change', 'click'].forEach(evt => el.templateConfigSection.addEventListener(evt, () => { debouncedUpdateAnalysis(); })); 
+    }
+
+
+    // --- UI Flow & View Navigation ---
+    function showAnalysisPage(show) {
+        el.homePage.classList.toggle('active', !show);
+        el.analysisPage.classList.toggle('active', show);
+        el.dashboardHeader.classList.toggle('hidden', !show);
+        el.globalFiltersSection.classList.toggle('hidden', !show);
+        document.querySelectorAll('.view-btn').forEach(btn => {
+            btn.disabled = !show;
+        });
+    }
+
+    function setActiveView(view) {
+        activeView = view;
+        sortState = { column: null, direction: 'asc' }; // Reset sort on view change
+
+        el.viewButtons.querySelectorAll('.view-btn').forEach(btn => {
+            btn.classList.toggle('nav-link-active', btn.dataset.view === view);
+        });
+
+        el.chartViewContainer.classList.toggle('hidden', view !== 'chart');
+        el.tableContainer.classList.toggle('hidden', view === 'chart');
+
+        renderActiveView();
+    }
+
+    function renderActiveView() {
+        if (!templateConfig) return;
+        applyGlobalFilters();
+
+        switch (activeView) {
+            case 'chart':
+                renderChartView();
+                break;
+            case 'daily':
+                renderDailyTable();
+                break;
+            case 'table':
+                renderSummaryTable('table-container', templateConfig.dimensions);
+                break;
+        }
+    }
+
+    function initializeAnalysisView() {
+        el.analysisReadyView.style.display = 'none';
+        el.templateConfigSection.classList.remove('hidden'); 
+        showAnalysisPage(true);
+        addLiveUpdateListeners();
+        setupChartControls();
+        setActiveView('table'); // Default to table view
+    }
+
+    function updateAnalysis() {
+        updateTemplateConfigFromUI();
+        if (allData.length > 0 && templateConfig && !allData[0].date) {
+            normalizeData();
+            setupGlobalFilters();
+            setupChartControls();
+        }
+        if (templateConfig) {
+            showAnalysisPage(true);
+            renderActiveView();
+        } else {
+            showAnalysisPage(false);
+        }
+    }
+
+    // --- Data Processing & Rendering ---
+    function normalizeData() {
+        const dateCol = templateConfig.dateColumn;
+        if (!allData[0] || allData[0][dateCol] === undefined) { 
+            showInAppNotification(`Error: Date column "${dateCol}" not found in data.`, 'error');
+            resetTemplateConfig();
+            return;
+        }
+        allData.forEach(row => {
+            const dateValue = row[dateCol];
+            if (dateValue) {
+                const parts = dateValue.split(/[-/]/); // handle YYYY-MM-DD or YYYY/MM/DD
+                if (parts.length === 3) {
+                    // Create date in UTC to avoid timezone shift
+                    const utcDate = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2]));
+                    row.date = utcDate.toISOString().split('T')[0];
+                } else {
+                    row.date = null;
+                }
+            } else {
+                row.date = null;
+            }
+
+            templateConfig.measures.forEach(m => {
+                if (!m.isCalculated) {
+                    row[m.name] = parseFloat(String(row[m.name]).replace(/,/g, '')) || 0;
+                }
+            });
+        });
+        allData = allData.filter(row => row.date);
+    }
+
+    function applyGlobalFilters() {
+        const [startDate, endDate] = el.headerDateFilterInputRight.value.split(' to ');
+        filteredData = allData.filter(d => {
+            const rowDate = d.date;
+            if (startDate && endDate) {
+                if (!(rowDate >= startDate && rowDate <= endDate)) return false;
+            } else if (startDate) {
+                if (rowDate !== startDate) return false;
+            }
+            
+            return activeDimensionFilters.every(f => {
+                const rowValue = String(d[f.dimension] || '').toLowerCase();
+                const filterValue = String(f.value).toLowerCase();
+                switch (f.condition) {
+                    case 'contains': return rowValue.includes(filterValue);
+                    case 'not_contains': return !rowValue.includes(filterValue);
+                    case 'exact_match': return rowValue === filterValue;
+                    case 'not_exact_match': return rowValue !== filterValue;
+                    case 'starts_with': return rowValue.startsWith(filterValue);
+                    case 'ends_with': return rowValue.endsWith(filterValue);
+                    default: return true;
+                }
+            });
+        });
+    }
+    
+    function setupChartControls() {
+        if (!templateConfig) return;
+        const measures = templateConfig.measures.map(m => `<option value="${m.name}">${m.name}</option>`).join('');
+        const numericMeasures = templateConfig.measures
+            .filter(m => m.format === 'number' || m.format === 'currency')
+            .map(m => `<option value="${m.name}">${m.name}</option>`).join('');
+        const dimensions = templateConfig.dimensions.map(d => `<option value="${d}">${d}</option>`).join('');
+
+        el.pieDimensionSelect.innerHTML = dimensions;
+        el.pieMeasureSelect.innerHTML = numericMeasures;
+
+        el.scatterXAxis.innerHTML = measures;
+        el.scatterYAxis.innerHTML = measures;
+        el.scatterGroupBy.innerHTML = dimensions;
+
+        // Set default selections
+        if (templateConfig.measures.length > 1) {
+            el.scatterYAxis.selectedIndex = 1;
+        }
+    }
+
+    function renderChartView() {
+        renderLineChart();
+        renderPieChart();
+        renderScatterPlot();
+    }
+
+    function renderLineChart() {
+        const lineCtx = document.getElementById('line-chart').getContext('2d');
+        if(charts.line) charts.line.destroy();
+        
+        const trendLabels = [...new Set(filteredData.map(d => d.date))].sort();
+        const measuresToShow = templateConfig.measures.filter(m => !m.isCalculated).slice(0, 2);
+
+        charts.line = new Chart(lineCtx, {
+            type: 'line',
+            data: {
+                labels: trendLabels,
+                datasets: measuresToShow.map((m, i) => ({
+                    label: m.name,
+                    data: trendLabels.map(label => 
+                        filteredData.filter(d => d.date === label)
+                                    .reduce((sum, item) => sum + (item[m.name] || 0), 0)
+                    ),
+                    borderColor: CHART_COLORS_PASTEL[i],
+                    yAxisID: i === 0 ? 'y' : 'y1',
+                    tension: 0.1
+                }))
+            },
+            options: { 
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: { 
+                    y: { position: 'left', grid: { drawOnChartArea: false } }, 
+                    y1: { position: 'right', grid: { drawOnChartArea: false } } 
+                } 
+            }
+        });
+    }
+
+    function renderPieChart() {
+        const dimension = el.pieDimensionSelect.value;
+        const measure = el.pieMeasureSelect.value;
+
+        if (!dimension || !measure) return;
+
+        const groupedData = Object.values(groupAndCalculateData(filteredData, [dimension]));
+        
+        const labels = groupedData.map(item => item[dimension]);
+        const data = groupedData.map(item => item[measure]);
+
+        const pieCtx = document.getElementById('pie-chart').getContext('2d');
+        if (charts.pie) charts.pie.destroy();
+
+        charts.pie = new Chart(pieCtx, {
+            type: 'pie',
+            data: {
+                labels: labels,
+                datasets: [{
+                    data: data,
+                    backgroundColor: CHART_COLORS_PASTEL,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'top' },
+                }
+            }
+        });
+    }
+
+    function renderScatterPlot() {
+        const xMetric = el.scatterXAxis.value;
+        const yMetric = el.scatterYAxis.value;
+        const groupBy = el.scatterGroupBy.value;
+
+        if (!xMetric || !yMetric || !groupBy) return;
+
+        const groupedData = groupAndCalculateData(filteredData, [groupBy]);
+        const processedData = Object.values(groupedData);
+
+        const groupLabels = [...new Set(processedData.map(item => item[groupBy]))];
+        const datasets = groupLabels.map((label, index) => {
+            const groupData = processedData.filter(item => item[groupBy] === label);
+            return {
+                label: label,
+                data: groupData.map(item => ({ x: item[xMetric], y: item[yMetric] })),
+                backgroundColor: CHART_COLORS_PASTEL[index % CHART_COLORS_PASTEL.length],
+            };
+        });
+
+        const scatterCtx = document.getElementById('scatter-chart').getContext('2d');
+        if (charts.scatter) charts.scatter.destroy();
+
+        charts.scatter = new Chart(scatterCtx, {
+            type: 'scatter',
+            data: { datasets },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: { title: { display: true, text: xMetric } },
+                    y: { title: { display: true, text: yMetric } }
+                },
+                plugins: {
+                    legend: { position: 'top' },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                let label = context.dataset.label || '';
+                                if (label) { label += ': '; }
+                                if (context.parsed.x !== null) {
+                                    label += `(${context.parsed.x.toFixed(2)}, ${context.parsed.y.toFixed(2)})`;
+                                }
+                                return label;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    function renderSummaryTable(containerId, groupBy = null) {
+        const container = document.getElementById(containerId);
+        if (!container) return;
+
+        const isGrouped = !!groupBy && (Array.isArray(groupBy) ? groupBy.length > 0 : true);
+        let dataToRender;
+        let headers;
+
+        if (isGrouped) {
+            const groupByFields = Array.isArray(groupBy) ? groupBy : [groupBy];
+            dataToRender = Object.values(groupAndCalculateData(filteredData, groupByFields));
+            headers = [...groupByFields, ...templateConfig.measures.map(m => m.name)];
+        } else {
+            dataToRender = processCalculatedFields(filteredData);
+            headers = [...templateConfig.dimensions, ...templateConfig.measures.map(m => m.name)];
+        }
+
+        let tableHTML = '<table class="w-full text-sm"><thead><tr>';
+        headers.forEach(h => {
+            const isMeasure = templateConfig.measures.some(m => m.name === h);
+            const alignClass = isMeasure ? 'text-right' : 'text-left';
+            tableHTML += `<th class="p-2 bg-slate-50 sortable-header cursor-pointer ${alignClass}" data-column-id="${h}">${h}<span class="sort-indicator"></span></th>`;
+        });
+        tableHTML += '</tr></thead><tbody>';
+
+        if (sortState.column) {
+            dataToRender.sort((a, b) => {
+                const valA = a[sortState.column];
+                const valB = b[sortState.column];
+                if (valA < valB) return sortState.direction === 'asc' ? -1 : 1;
+                if (valA > valB) return sortState.direction === 'asc' ? 1 : -1;
+                return 0;
+            });
+        }
+
+        dataToRender.forEach(item => {
+            tableHTML += '<tr class="border-b">';
+            headers.forEach(h => { 
+                const value = item[h];
+                const isMeasure = templateConfig.measures.some(m => m.name === h);
+                if (isMeasure) {
+                    const measure = templateConfig.measures.find(m => m.name === h);
+                    tableHTML += `<td class="p-2 text-right">${formatNumber(value, measure ? measure.format : 'number')}</td>`;
+                } else {
+                    tableHTML += `<td class="p-2 text-left">${value}</td>`;
+                }
+            });
+            tableHTML += '</tr>';
+        });
+        tableHTML += '</tbody></table>';
+        
+        if (isGrouped) {
+            container.innerHTML = tableHTML;
+        } else {
+            container.innerHTML = `<div class="bg-white p-4 rounded-lg shadow">${tableHTML}</div>`;
+        }
+
+        const tableElement = container.querySelector('table');
+        tableElement.querySelectorAll('.sortable-header').forEach(th => {
+            const columnId = th.dataset.columnId;
+            const indicator = th.querySelector('.sort-indicator');
+            if (sortState.column === columnId) {
+                th.classList.add('active');
+                indicator.innerHTML = sortState.direction === 'asc' ? '&#9650;' : '&#9660;';
+            }
+            th.addEventListener('click', () => {
+                if (sortState.column === columnId) {
+                    sortState.direction = sortState.direction === 'asc' ? 'desc' : 'asc';
+                } else {
+                    sortState.column = columnId;
+                    sortState.direction = 'asc';
+                }
+                renderSummaryTable(containerId, groupBy);
+            });
+        });
+    }
+    
+    function renderDailyTable() {
+        renderSummaryTable('table-container', 'date');
+    }
+
+    function processCalculatedFields(data) {
+        const calculatedMeasures = templateConfig.measures.filter(m => m.isCalculated);
+        if (calculatedMeasures.length === 0) return data;
+
+        return data.map(row => {
+            const newRow = { ...row };
+            calculatedMeasures.forEach(m => {
+                try {
+                    const formula = m.formula.replace(/([a-zA-Z0-9_]+)/g, (match) => {
+                        // Check if the match is a number literal, if so, don't wrap it
+                        if (!isNaN(parseFloat(match)) && isFinite(match)) {
+                            return match;
+                        }
+                        return `(newRow['${match}'] || 0)`;
+                    });
+                    newRow[m.name] = eval(formula);
+                } catch (e) {
+                    console.error(`Error evaluating formula for ${m.name}:`, e);
+                    newRow[m.name] = NaN;
+                }
+            });
+            return newRow;
+        });
+    }
+
+    function groupAndCalculateData(data, groupByFields) {
+        if (!Array.isArray(groupByFields)) {
+            groupByFields = [groupByFields];
+        }
+        if (groupByFields.length === 0) return {};
+
+        const processedData = processCalculatedFields(data);
+        const grouped = {};
+        processedData.forEach(row => {
+            const key = groupByFields.map(field => row[field] || '(empty)').join(' | ');
+            if (!grouped[key]) {
+                grouped[key] = {};
+                groupByFields.forEach(field => {
+                    grouped[key][field] = row[field] || '(empty)';
+                });
+                templateConfig.measures.forEach(m => {
+                    grouped[key][m.name] = 0;
+                });
+            }
+            templateConfig.measures.forEach(m => {
+                // We sum up all measures, including calculated ones, after they've been processed.
+                grouped[key][m.name] += row[m.name] || 0;
+            });
+        });
+
+        return grouped;
+    }
+
+    function formatNumber(num, format) {
+        if (num === undefined || num === null || isNaN(num)) return '0';
+        switch(format) {
+            case 'currency': return num.toLocaleString(undefined, {style: 'currency', currency: currentCurrency, minimumFractionDigits: 0, maximumFractionDigits: 0});
+            case 'percent': return (num * 100).toFixed(2) + '%';
+            case 'decimal': return num.toFixed(2);
+            default: return num.toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 0});
+        }
+    }
+
+    function setupGlobalFilters() {
+        const dates = allData.map(d => new Date(d.date)).filter(d => !isNaN(d));
+        if (dates.length > 0) {
+            const minDate = new Date(Math.min.apply(null, dates));
+            const maxDate = new Date(Math.max.apply(null, dates));
+            const options = { 
+                mode: "range", 
+                defaultDate: [minDate, maxDate], 
+                dateFormat: "Y-m-d",
+                allowInput: false,
+                onChange: function(selectedDates, dateStr, instance) {
+                    el.dateRangePresetSelect.value = 'custom';
+                    debouncedUpdateAnalysis();
+                }
+            };
+            if(headerFlatpickrRight) headerFlatpickrRight.destroy();
+            if(comparisonFlatpickrRight) comparisonFlatpickrRight.destroy();
+            headerFlatpickrRight = flatpickr(el.headerDateFilterInputRight, options);
+            comparisonFlatpickrRight = flatpickr(el.comparisonDateFilterInputRight, { 
+                mode: "range", 
+                dateFormat: "Y-m-d",
+                allowInput: false,
+                onChange: () => debouncedUpdateAnalysis() 
+            });
+        }
+        el.filterDimensionSelect.innerHTML = '<option value="" disabled selected>Select Dimension</option>' + templateConfig.dimensions.map(d => `<option value="${d}">${d}</option>`).join('');
+    }
+
+    function getPresetDateRange(preset) {
+        const now = new Date();
+        let start = new Date();
+        let end = new Date();
+
+        switch (preset) {
+            case 'yesterday':
+                start.setDate(now.getDate() - 1);
+                end.setDate(now.getDate() - 1);
+                break;
+            case 'last_7_days':
+                start.setDate(now.getDate() - 6);
+                break;
+            case 'this_month':
+                start = new Date(now.getFullYear(), now.getMonth(), 1);
+                end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+                break;
+            case 'last_month':
+                start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+                end = new Date(now.getFullYear(), now.getMonth(), 0);
+                break;
+            default:
+                return null;
+        }
+        const formatDate = (date) => date.toISOString().split('T')[0];
+        return [formatDate(start), formatDate(end)];
+    }
+
+    function handleDatePresetChange() {
+        const preset = el.dateRangePresetSelect.value;
+        if (preset === 'custom') return;
+
+        const range = getPresetDateRange(preset);
+        if (range && headerFlatpickrRight) {
+            headerFlatpickrRight.setDate(range, true); // true triggers onChange
+        }
+    }
+    
+    function addDimensionFilter() {
+        const dimension = el.filterDimensionSelect.value;
+        const condition = el.filterConditionSelect.value;
+        const value = el.filterValueInput.value.trim();
+        if (!dimension || !value) return;
+        activeDimensionFilters.push({ id: nextFilterId++, dimension, condition, value });
+        renderActiveDimensionFilters();
+        el.filterValueInput.value = '';
+        el.filterDimensionSelect.value = '';
+        el.addNewFilterBtn.disabled = true;
+    }
+
+    function renderActiveDimensionFilters() {
+        const filterHTML = activeDimensionFilters.map(f => `
+            <div class="px-2 py-1 bg-green-100 text-green-800 rounded-lg flex justify-between items-center text-xs font-medium">
+                <span>${f.dimension}: ${f.condition} "${f.value}"</span>
+                <button class="remove-filter-btn ml-2 text-red-600" data-filter-id="${f.id}">✖</button>
+            </div>`).join('');
+        el.modalActiveFiltersList.innerHTML = filterHTML;
+        el.filterCountBadge.textContent = activeDimensionFilters.length;
+        el.filterCountBadge.classList.toggle('hidden', activeDimensionFilters.length === 0);
+    }
+
+    // --- Left Panel Functions (from previous steps) ---
+    function handleFileSelection(event) {
+        uploadedFileObjects = Array.from(event.target.files);
+        if (!uploadedFileObjects.length) return;
+        renderFileLists();
+        processFiles();
+    }
+
+    function renderFileLists() {
+        el.fileList.innerHTML = uploadedFileObjects.map(f => `<div class="p-1.5 bg-slate-50 rounded-md flex justify-between items-center"><span>${f.name}</span><span class="text-slate-500">${(f.size / 1024).toFixed(2)} KB</span></div>`).join('');
+    }
+
+    async function processFiles() {
+        if (uploadedFileObjects.length === 0) return;
+        el.processingStatus.innerHTML = `<div class="flex items-center justify-center gap-2"><div class="loader" style="width:20px;height:20px;border-width:2px;"></div><span>Processing...</span></div>`;
+        try {
+            const file = uploadedFileObjects[0];
+            const encoding = await new Promise(res => {
+                const reader = new FileReader();
+                reader.onload = e => res(jschardet.detect(new Uint8Array(e.target.result)).encoding);
+                reader.readAsArrayBuffer(file);
+            });
+            const text = await file.text(encoding);
+            const result = Papa.parse(text, { header: true, skipEmptyLines: true, dynamicTyping: true });
+            csvHeaders = result.meta.fields.filter(h => h);
+            allData = result.data;
+            el.processingStatus.textContent = `${uploadedFileObjects.length} file(s) processed.`;
+            showTemplateConfig();
+        } catch (error) {
+            el.processingStatus.textContent = `Error: ${error.message}`;
+        }
+    }
+    
+
+    function showTemplateConfig() {
+        el.initialSetupView.style.display = 'none';
+        el.templateConfigSection.classList.remove('hidden');
+        renderColumnCheckboxes();
+        populateDateColumnSelect();
+        addLiveUpdateListeners(); // IMPORTANT: Activate live updates right after CSV is loaded
+
+        new Sortable(el.dimensionCheckboxList, {
+            animation: 150,
+            ghostClass: 'bg-green-100',
+            onEnd: () => {
+                debouncedUpdateAnalysis();
+            }
+        });
+
+        new Sortable(el.measureCheckboxList, {
+            animation: 150,
+            ghostClass: 'bg-green-100',
+            onEnd: () => {
+                debouncedUpdateAnalysis();
+            }
+        });
+        debouncedUpdateAnalysis();
+    }
+
+    function resetTemplateConfig() {
+        el.templateConfigSection.classList.add('hidden');
+        el.analysisReadyView.style.display = 'none';
+        el.initialSetupView.style.display = 'block';
+        el.fileList.innerHTML = '';
+        el.processingStatus.innerHTML = '';
+        uploadedFileObjects = []; csvHeaders = []; allData = []; templateConfig = null;
+        el.csvFilesInput.value = '';
+        tempCalculatedFields = [];
+        showAnalysisPage(false);
+    }
+
+    function sortCheckboxList(listElement) {
+        const labels = Array.from(listElement.children);
+        labels.sort((a, b) => {
+            const aChecked = a.querySelector('input[type="checkbox"]').checked;
+            const bChecked = b.querySelector('input[type="checkbox"]').checked;
+            if (aChecked && !bChecked) return -1;
+            if (!aChecked && bChecked) return 1;
+            return 0;
+        });
+        labels.forEach(label => listElement.appendChild(label));
+    }
+
+    function renderColumnCheckboxes(checkedDimensions = new Set(), checkedMeasures = new Set()) {
+        const createListHTML = (headers, isMeasure, checkedSet) => {
+            return headers.map(header => {
+                const isChecked = checkedSet.has(header);
+                const formatSelectHTML = isMeasure ? `
+                    <select class="measure-format-select" style="display: ${isChecked ? 'inline-block' : 'none'};">
+                        <option value="number">Number</option>
+                        <option value="currency">Currency</option>
+                        <option value="percent">Percent</option>
+                        <option value="decimal">Decimal</option>
+                    </select>` : '';
+                return `
+            <label>
+                <input type="checkbox" class="form-checkbox" value="${header}" ${isChecked ? 'checked' : ''}>
+                <span class="ml-2 mr-2">${header}</span>
+                ${formatSelectHTML}
+            </label>`;
+            }).join('');
+        };
+
+        const filteredMeasureHeaders = csvHeaders.filter(h => !HIDDEN_MEASURE_KEYWORDS.some(keyword => h.toLowerCase().includes(keyword)));
+        el.dimensionCheckboxList.innerHTML = createListHTML(csvHeaders, false, checkedDimensions);
+        el.measureCheckboxList.innerHTML = createListHTML(filteredMeasureHeaders, true, checkedMeasures);
+
+        sortCheckboxList(el.dimensionCheckboxList);
+        sortCheckboxList(el.measureCheckboxList);
+
+        el.dimensionCheckboxList.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+            cb.addEventListener('change', () => sortCheckboxList(el.dimensionCheckboxList));
+        });
+        el.measureCheckboxList.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+            cb.addEventListener('change', (e) => {
+                const formatSelect = e.target.closest('label').querySelector('.measure-format-select');
+                if (formatSelect) {
+                    formatSelect.style.display = e.target.checked ? 'inline-block' : 'none';
+                }
+                sortCheckboxList(el.measureCheckboxList);
+            });
+        });
+    }
+
+    function populateDateColumnSelect() {
+        el.templateDateColumn.innerHTML = csvHeaders.map(h => `<option value="${h}">${h}</option>`).join('');
+        const dateCandidate = csvHeaders.find(h => h.toLowerCase().includes('date') || h.toLowerCase().includes('日付'));
+        if(dateCandidate) el.templateDateColumn.value = dateCandidate;
+    }
+
+    function filterCheckboxList(inputEl, listEl) {
+        const searchTerm = inputEl.value.toLowerCase();
+        listEl.querySelectorAll('label').forEach(label => {
+            label.style.display = label.textContent.toLowerCase().includes(searchTerm) ? 'flex' : 'none';
+        });
+    }
+
+    function handleTemplateFileSelection(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            try {
+                const loadedTemplate = JSON.parse(e.target.result);
+                templateConfig = loadedTemplate;
+                el.templateDateColumn.value = loadedTemplate.dateColumn;
+
+                // --- Dimensions ---
+                const dimNamesInTemplate = new Set(loadedTemplate.dimensions);
+                const otherDims = csvHeaders.filter(h => !dimNamesInTemplate.has(h));
+                const orderedDims = [...loadedTemplate.dimensions, ...otherDims];
+                el.dimensionCheckboxList.innerHTML = orderedDims.map(h => `
+                    <label>
+                        <input type="checkbox" class="form-checkbox" value="${h}" ${dimNamesInTemplate.has(h) ? 'checked' : ''}>
+                        <span class="ml-2 mr-2">${h}</span>
+                    </label>`).join('');
+
+                // --- Measures ---
+                el.measureCheckboxList.innerHTML = ''; // Clear
+                tempCalculatedFields = loadedTemplate.measures.filter(m => m.isCalculated);
+                const baseMeasureNamesInTemplate = new Set(loadedTemplate.measures.filter(m => !m.isCalculated).map(m => m.name));
+                const allPossibleMeasures = csvHeaders.filter(h => !HIDDEN_MEASURE_KEYWORDS.some(keyword => h.toLowerCase().includes(keyword)));
+                const otherMeasures = allPossibleMeasures.filter(h => !baseMeasureNamesInTemplate.has(h));
+
+                // Add measures from template in order
+                loadedTemplate.measures.forEach(measure => {
+                    if (measure.isCalculated) {
+                        addFieldToMeasureList(measure);
+                    } else {
+                        const formatSelectHTML = `
+                            <select class="measure-format-select" style="display: inline-block;">
+                                <option value="number" ${measure.format === 'number' ? 'selected' : ''}>Number</option>
+                                <option value="currency" ${measure.format === 'currency' ? 'selected' : ''}>Currency</option>
+                                <option value="percent" ${measure.format === 'percent' ? 'selected' : ''}>Percent</option>
+                                <option value="decimal" ${measure.format === 'decimal' ? 'selected' : ''}>Decimal</option>
+                            </select>`;
+                        const label = document.createElement('label');
+                        label.innerHTML = `
+                            <input type="checkbox" class="form-checkbox" value="${measure.name}" checked>
+                            <span class="ml-2 mr-2">${measure.name}</span>
+                            ${formatSelectHTML}`;
+                        el.measureCheckboxList.appendChild(label);
+                    }
+                });
+
+                // Add other base measures (unchecked)
+                otherMeasures.forEach(header => {
+                    const formatSelectHTML = `
+                        <select class="measure-format-select" style="display: none;">
+                            <option value="number">Number</option>
+                            <option value="currency">Currency</option>
+                            <option value="percent">Percent</option>
+                            <option value="decimal">Decimal</option>
+                        </select>`;
+                    const label = document.createElement('label');
+                    label.innerHTML = `
+                        <input type="checkbox" class="form-checkbox" value="${header}">
+                        <span class="ml-2 mr-2">${header}</span>
+                        ${formatSelectHTML}`;
+                    el.measureCheckboxList.appendChild(label);
+                });
+
+                // Re-add event listeners
+                el.measureCheckboxList.querySelectorAll('input[type="checkbox"]:not(:disabled)').forEach(cb => {
+                    cb.addEventListener('change', (e) => {
+                        const formatSelect = e.target.closest('label').querySelector('.measure-format-select');
+                        if (formatSelect) {
+                            formatSelect.style.display = e.target.checked ? 'inline-block' : 'none';
+                        }
+                        sortCheckboxList(el.measureCheckboxList);
+                    });
+                });
+                el.dimensionCheckboxList.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+                    cb.addEventListener('change', () => sortCheckboxList(el.dimensionCheckboxList));
+                });
+
+                initializeAnalysisView();
+                debouncedUpdateAnalysis();
+            } catch (err) { showInAppNotification('Could not parse template file.', 'error'); }
+        };
+        reader.readAsText(file);
+        event.target.value = ''; // Allow re-selecting the same file
+    }
+
+    function openSaveTemplateModal() {
+        el.modalTemplateNameInput.value = '';
+        el.saveTemplateModal.classList.remove('hidden');
+        el.saveTemplateModal.classList.add('flex');
+        el.modalTemplateNameInput.focus();
+    }
+
+    function closeSaveTemplateModal() {
+        el.saveTemplateModal.classList.add('hidden');
+        el.saveTemplateModal.classList.remove('flex');
+    }
+
+    function updateTemplateConfigFromUI() {
+        const getChecked = (list) => Array.from(list.querySelectorAll('input:checked')).map(cb => cb.value);
+        const dimensions = getChecked(el.dimensionCheckboxList);
+        
+        const measures = Array.from(el.measureCheckboxList.querySelectorAll('label'))
+            .filter(label => label.querySelector('input:checked'))
+            .map(label => {
+                const input = label.querySelector('input');
+                const value = input.value;
+                if (input.disabled) { // This is a calculated field
+                    return tempCalculatedFields.find(f => f.name === value);
+                } else { // This is a base measure
+                    const select = label.querySelector('select');
+                    return { name: value, format: select.value, isCalculated: false };
+                }
+            });
+
+        if (!el.templateDateColumn.value || (dimensions.length === 0 && measures.length === 0)) {
+            templateConfig = null; 
+            return;
+        }
+        templateConfig = { templateName: "Live Config", dateColumn: el.templateDateColumn.value, dimensions, measures };
+    }
+
+    function confirmSaveTemplate() {
+        const templateName = el.modalTemplateNameInput.value.trim();
+        if (!templateName) return showToast('Please enter a template name.', 'error');
+        updateTemplateConfigFromUI(); // Ensure templateConfig is up-to-date
+        if (!templateConfig) return showToast("Please select at least one date column, dimension, and measure.", 'error');
+
+        const blob = new Blob([JSON.stringify(templateConfig, null, 2)], { type: 'application/json' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `${templateName.replace(/\s+/g, '_')}.json`;
+        a.click();
+        URL.revokeObjectURL(a.href);
+        
+        closeSaveTemplateModal();
+        showToast(`Template "${templateName}" saved.`, 'success');
+        initializeAnalysisView(); // Start analysis after saving
+    }
+
+    function addCalculatedField() {
+        const name = el.calculatedFieldNameInput.value.trim();
+        const formula = el.formulaInput.innerText.trim();
+        const format = el.calculatedFieldFormatSelect.value;
+        if (!name || !formula) return showToast('Please provide a name and a formula.', 'error');
+
+        const newField = { name, formula, isCalculated: true, format };
+        tempCalculatedFields.push(newField);
+        addFieldToMeasureList(newField);
+
+        el.calculatedFieldNameInput.value = '';
+        el.formulaInput.innerText = '';
+    }
+
+    function addFieldToMeasureList(field) {
+        const label = document.createElement('label');
+        label.className = 'text-xs text-cyan-700 bg-cyan-50 font-semibold';
+        label.innerHTML = `
+            <input type="checkbox" class="form-checkbox" value="${field.name}" checked disabled>
+            <span class="ml-2">${field.name} (calc, ${field.format})</span>
+            <button type="button" class="delete-calc-field-btn" data-field-name="${field.name}">✖</button>
+        `;
+        el.measureCheckboxList.appendChild(label);
+    }
+
+    function deleteCalculatedField(fieldName, labelElement) {
+        tempCalculatedFields = tempCalculatedFields.filter(f => f.name !== fieldName);
+        labelElement.remove();
+    }
+
+    function handleFormulaInput() {
+        const content = el.formulaInput.innerText;
+        const lastWord = content.split(/[ +*-/()]+/).pop();
+
+        if (lastWord) {
+            const suggestions = csvHeaders.filter(h => h.toLowerCase().startsWith(lastWord.toLowerCase()));
+            showSuggestions(suggestions, lastWord.length);
+        } else {
+            el.formulaSuggestions.classList.add('hidden');
+        }
+    }
+
+    function showSuggestions(suggestions, charsToRemove) {
+        if (!suggestions.length) {
+            el.formulaSuggestions.classList.add('hidden');
+            return;
+        }
+        el.formulaSuggestions.innerHTML = suggestions.map(s => `<div class="suggestion-item">${s}</div>`).join('');
+        el.formulaSuggestions.classList.remove('hidden');
+
+        el.formulaSuggestions.querySelectorAll('.suggestion-item').forEach(item => {
+            item.onclick = () => {
+                const currentText = el.formulaInput.innerText;
+                const newText = currentText.substring(0, currentText.length - charsToRemove) + item.textContent + ' ';
+                el.formulaInput.innerText = newText;
+                el.formulaSuggestions.classList.add('hidden');
+                el.formulaInput.focus();
+                const range = document.createRange();
+                const sel = window.getSelection();
+                range.selectNodeContents(el.formulaInput);
+                range.collapse(false);
+                sel.removeAllRanges();
+                sel.addRange(range);
+            };
+        });
+    }
+
+    function handleTargetChange() {
+        globalTarget.measureName = el.targetMeasureSelect.value;
+        globalTarget.value = parseFloat(el.targetValueInput.value) || null;
+        debouncedUpdateAnalysis();
+    }
+
+    function updateUIForLanguage() {
+        currentLanguage = el.languageToggle.checked ? 'en' : 'ja';
+        document.querySelectorAll('[data-i18n]').forEach(elem => {
+            const key = elem.dataset.i18n;
+            if (uiTexts[currentLanguage][key]) {
+                elem.textContent = uiTexts[currentLanguage][key];
+            }
+        });
+        renderActiveView();
+    }
+
+    function showToast(message, type = 'info') {
+        const container = document.getElementById('toast-container');
+        const toast = document.createElement('div');
+        toast.className = `toast ${type}`;
+        toast.textContent = message;
+        container.appendChild(toast);
+
+        setTimeout(() => toast.classList.add('show'), 10); // Fade in
+
+        setTimeout(() => {
+            toast.classList.remove('show');
+            toast.addEventListener('transitionend', () => toast.remove());
+        }, 3000); // Fade out after 3 seconds
+    }
+
+    function showInAppNotification(message, type = 'info') {
+        const panel = document.getElementById('notification-panel');
+        const content = document.getElementById('notification-content');
+        const messageEl = document.getElementById('notification-message');
+
+        messageEl.textContent = message;
+
+        // Reset classes
+        content.classList.remove('bg-red-100', 'text-red-800', 'bg-green-100', 'text-green-800', 'bg-blue-100', 'text-blue-800');
+
+        // Apply new classes based on type
+        if (type === 'error') {
+            content.classList.add('bg-red-100', 'text-red-800');
+        } else if (type === 'success') {
+            content.classList.add('bg-green-100', 'text-green-800');
+        } else { // info
+            content.classList.add('bg-blue-100', 'text-blue-800');
+        }
+
+        panel.classList.remove('hidden');
+
+        // Auto-hide after 5 seconds
+        setTimeout(() => {
+            panel.classList.add('hidden');
+        }, 5000);
+    }
+
+    const debounce = (func, delay) => {
+        let timeout;
+        return (...args) => {
+            clearTimeout(timeout);
+            timeout = setTimeout(() => func.apply(this, args), delay);
+        };
+    };
+    const debouncedUpdateAnalysis = debounce(updateAnalysis, 500);
+
+</script>
+</body>
+</html>

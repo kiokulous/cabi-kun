@@ -1,0 +1,2516 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CABI-KUN</title>
+    
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jschardet/2.3.0/jschardet.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
+
+    <style>
+        :root {
+            --left-panel-width: 340px;
+            --right-panel-width: 320px;
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            font-size: 14px;
+        }
+        .main-container { display: grid; grid-template-columns: var(--left-panel-width) 16px 1fr 16px var(--right-panel-width); height: calc(100vh - 50px); overflow: hidden; }
+        .panel { background-color: #ffffff; display: flex; flex-direction: column; overflow: hidden; transition: width 0.3s ease, min-width 0.3s ease; border-radius: 0.75rem; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06); }
+        .panel-content { flex-grow: 1; overflow-y: auto; overflow-x: hidden; }
+        .resizer { background-color: #f1f5f9; cursor: col-resize; width: 16px; z-index: 9; }
+        .resizer:hover { background-color: #cbd5e1; width: 16px; margin: 0; }
+        .left-panel.collapsed .panel-content, .right-panel.collapsed .panel-content { display: none; }
+        .left-panel.collapsed #left-panel-collapsed-content, .right-panel.collapsed #right-panel-collapsed-content { display: flex; }
+        .left-panel.collapsed { width: 60px; min-width: 60px; }
+        .right-panel.collapsed { width: 60px; min-width: 60px; }
+        .left-panel.collapsed .p-3.border-b h2, .right-panel.collapsed .p-3.border-b h2 { display: none; }
+        .panel.collapsed .p-3.border-b h2 { display: none !important; }
+
+        .panel-toggle-btn {
+            background-color: transparent;
+            border: none;
+            padding: 0.25rem 0.5rem;
+            border-radius: 0.375rem; /* rounded-md */
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background-color 0.2s ease;
+        }
+        .panel-toggle-btn:hover {
+            background-color: #dcfce7; /* light green */
+        }
+
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        ::-webkit-scrollbar-thumb { background: #a8a8a8; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #888; }
+
+        .interactive-button { transition: all 0.2s ease-in-out; }
+        .interactive-button:hover { transform: translateY(-1px); box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+        .interactive-button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; }
+        .loader { border: 4px solid #f3f3ff; border-top: 4px solid #10b981; border-radius: 50%; width: 30px; height: 30px; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        #loading-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(255, 255, 255, 0.9); display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 1000; }
+        
+        .column-list { max-height: 160px; overflow-y: auto; border: 1px solid #d1d5db; border-radius: 0.5rem; padding: 0.5rem; background-color: #f9fafb; }
+        .column-list label { display: flex; align-items: center; padding: 0.25rem 0.5rem; border-radius: 0.375rem; transition: background-color 0.2s ease; font-size: 12px; }
+        .column-list label:hover { background-color: #f0fdf4; }
+        .column-list input[type="checkbox"] { width: 0.875rem; height: 0.875rem; border-radius: 0.25rem; border-color: #9ca3af; color: #10b981; flex-shrink: 0; }
+        .column-list .measure-format-select { font-size: 11px; padding: 2px; border-radius: 4px; margin-left: auto; background-color: #f3f4f6; border-color: #d1d5db; }
+        .delete-calc-field-btn { background: none; border: none; color: #ef4444; cursor: pointer; margin-left: 8px; padding: 0; font-size: 14px; line-height: 1; }
+        .delete-calc-field-btn:hover { color: #b91c1c; }
+
+        #formula-input { border: 1px solid #d1d5db; padding: 0.5rem; border-radius: 0.375rem; min-height: 40px; }
+        #formula-input:focus { outline: 2px solid transparent; outline-offset: 2px; border-color: #10b981; box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.5); }
+        #formula-suggestions { border: 1px solid #d1d5db; border-top: none; border-radius: 0 0 0.375rem 0.375rem; max-height: 150px; overflow-y: auto; background-color: white; z-index: 20; }
+        .suggestion-item { padding: 0.5rem; cursor: pointer; }
+        .suggestion-item:hover { background-color: #f0fdf4; }
+        
+        .nav-link-active {
+            background-color: #ecfdf5;
+            color: #059669;
+            font-weight: 600;
+            border-color: #10b981;
+            box-shadow: 0 0 8px rgba(16, 185, 129, 0.4);
+        }
+        .view-btn {
+            border: 1px solid transparent;
+            transition: all 0.2s ease-in-out;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+        }
+        .custom-select { appearance: none; -webkit-appearance: none; -moz-appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%2310b981' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 0.5rem center; background-size: 1.25em; padding-right: 2.5rem; }
+        .custom-select:focus { outline: none; border-color: #10b981; box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.5); }
+        .app-page { display: none; }
+        .app-page.active { display: block; }
+    </style>
+    <style>
+        .sort-indicator {
+            display: inline-block;
+            margin-left: 6px;
+            color: #9ca3af; /* gray-400 */
+            opacity: 0.5;
+            transition: opacity 0.2s;
+        }
+        #toast-container { position: fixed; bottom: 1rem; left: 50%; transform: translateX(-50%); z-index: 1000; display: flex; flex-direction: column; gap: 0.5rem; }
+        .toast { background-color: #2d3748; color: white; padding: 0.75rem 1.25rem; border-radius: 0.5rem; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06); opacity: 0; transform: translateY(20px); transition: opacity 0.3s ease, transform 0.3s ease; }
+        .toast.show { opacity: 1; transform: translateY(0); }
+        .toast.success { background-color: #2f855a; }
+        .toast.error { background-color: #c53030; }
+        .toast.info { background-color: #2b6cb0; }
+
+
+        th.sortable-header.active .sort-indicator { color: #10b981; opacity: 1; }
+        #language-toggle:checked ~ .dot { transform: translateX(1.125rem); }
+        #language-toggle:checked + .block { background-color: #10b981; }
+    </style>
+</head>
+<body class="bg-slate-100 text-slate-700 text-sm">
+
+    <div id="loading-overlay" style="display: none;"><div class="loader"></div><p id="loading-text" class="mt-3 font-semibold text-slate-600">Loading...</p></div>
+
+    <header id="dashboard-header" class="p-2 flex justify-between items-center bg-slate-100 flex-shrink-0">
+        <div class="flex items-center gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z" />
+                <path stroke-linecap="round" stroke-linejoin="round" d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z" />
+            </svg>
+            <h1 class="text-lg font-bold bg-gradient-to-r from-green-500 to-emerald-500 bg-clip-text text-transparent">CABI-KUN <span class="text-xs text-slate-400 font-normal">v1.6.2</span></h1>
+        </div>
+        <div class="flex items-center gap-4">
+            <div class="flex items-center justify-center space-x-2">
+                <span class="font-bold text-xs">JA</span>
+                <label class="flex items-center cursor-pointer">
+                    <div class="relative">
+                        <input type="checkbox" id="language-toggle" class="sr-only">
+                        <div class="block bg-slate-200 w-9 h-5 rounded-full transition-colors"></div>
+                        <div class="dot absolute left-0.5 top-0.5 bg-white w-4 h-4 rounded-full transition"></div>
+                    </div>
+                </label>
+                <span class="font-bold text-xs">EN</span>
+            </div>
+            <div class="flex items-center justify-center">
+                <button id="currency-toggle-btn" class="interactive-button w-9 h-5 rounded-full bg-slate-200 text-xs font-bold text-slate-700 flex items-center justify-center" data-currency="JPY">¥</button>
+            </div>
+        </div>
+    </header>
+
+    <div id="app-container" class="main-container">
+        <!-- Left Panel -->
+        <aside id="left-panel" class="panel">
+            <div class="p-3 border-b flex-shrink-0 flex justify-between items-center">
+                <h2 class="text-base font-bold text-slate-800" data-i18n="leftPanelTitle">Data</h2>
+                <button id="left-panel-toggle-btn" class="panel-toggle-btn">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+                </button>
+            </div>
+            <div class="panel-content p-3 space-y-5">
+                <div id="initial-setup-view">
+                    <div id="file-upload-section" class="flex gap-2">
+                        <input type="file" id="csv-files-input" multiple class="hidden" accept=".csv">
+                        <button id="select-files-btn" class="interactive-button w-1/2 p-3 text-sm font-semibold rounded-lg bg-green-600 text-white" data-i18n="homeSelectFiles">Select Files</button>
+                        <button id="manage-files-btn" class="view-btn interactive-button w-1/2 p-3 text-sm font-semibold rounded-lg bg-slate-200 text-slate-700 hover:bg-slate-300" data-view="files">
+                            <span data-i18n="manageFiles"></span>
+                        </button>
+                    </div>
+                </div>
+
+                <div id="template-config-section" class="hidden space-y-3">
+                    <div class="space-y-2">
+                        
+                        <input type="file" id="template-files-input" class="hidden" accept=".json">
+                        <button id="load-templates-btn" class="interactive-button w-full px-3 py-2 text-sm font-semibold rounded-lg bg-white text-slate-700 border border-slate-300 hover:bg-slate-50" data-i18n="homeSelectFolder">Load Existing Template</button>
+                        <button id="save-template-btn" class="interactive-button w-full px-3 py-2 text-sm font-semibold rounded-lg bg-green-600 text-white" data-i18n="save">Save as New Template</button>
+                    </div>
+                    <hr/>
+                    <div class="space-y-3">
+                        <div>
+                            <label for="template-date-column" class="font-semibold text-xs mb-1 block" data-i18n="modalDateColumn">Date Column (Required)</label>
+                            <select id="template-date-column" class="w-full custom-select px-3 py-2 text-sm rounded-lg border-2 border-slate-300 focus:ring-2 focus:ring-green-500"></select>
+                        </div>
+                        <p class="text-sm font-semibold text-green-600 mb-2" data-i18n="dragDropNote">Drag and drop to reorder columns.</p>
+                        <div>
+                            <label class="font-semibold text-xs mb-1 block" data-i18n="modalDimensions">Dimensions</label>
+                            <input type="text" id="dimension-search-input" placeholder="Search dimensions..." class="w-full px-3 py-1.5 mb-1 text-xs rounded-lg border border-slate-300">
+                            <div id="dimension-checkbox-list" class="column-list"></div>
+                        </div>
+                        <div>
+                            <label class="font-semibold text-xs mb-1 block" data-i18n="modalMeasures">Measures</label>
+                            <input type="text" id="measure-search-input" placeholder="Search measures..." class="w-full px-3 py-1.5 mb-1 text-xs rounded-lg border border-slate-300">
+                            <div id="measure-checkbox-list" class="column-list"></div>
+                        </div>
+                        <div>
+                            <button id="toggle-calculated-field-btn" class="interactive-button w-full text-sm px-3 py-2 font-semibold rounded-lg bg-emerald-500 text-white">
+                                <span data-i18n="addCalculatedField">Add Calculated Field</span>
+                            </button>
+                            <div id="calculated-field-form" class="hidden mt-2 p-2 border rounded-lg bg-slate-50 space-y-2">
+                                <div class="grid grid-cols-2 gap-2">
+                                    <input type="text" id="calculated-field-name-input" data-i18n-placeholder="calcFieldNamePlaceholder" class="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-300">
+                                    <select id="calculated-field-format-select" class="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-300">
+                                        <option value="number" data-i18n="calcFieldFormatNumber"></option>
+                                        <option value="currency" data-i18n="calcFieldFormatCurrency"></option>
+                                        <option value="percent" data-i18n="calcFieldFormatPercent"></option>
+                                        <option value="decimal" data-i18n="calcFieldFormatDecimal"></option>
+                                    </select>
+                                </div>
+                                <div class="relative">
+                                    <div id="formula-input" contenteditable="true" class="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-300 bg-white" data-i18n-placeholder="calcFieldFormulaPlaceholder"></div>
+                                    <div id="formula-suggestions" class="absolute w-full hidden"></div>
+                                </div>
+                                <button id="add-calculated-field-confirm-btn" class="interactive-button w-full text-xs px-3 py-1.5 font-semibold rounded-lg bg-emerald-500 text-white" data-i18n="calcFieldAddButton"></button>
+                            </div>
+                        </div>
+                    </div>
+                     <button id="reset-template-config-btn" class="interactive-button w-full text-xs px-3 py-2 font-semibold rounded-lg bg-slate-600 text-white" data-i18n="resetConfig">Reset Configuration</button>
+                </div>
+                <div id="analysis-ready-view" class="hidden space-y-4 text-center">
+                    <h3 class="font-bold text-base" data-i18n="analysisReadyTitle">Ready for Analysis</h3>
+                    <p class="text-xs text-slate-500" data-i18n="analysisReadyMsg">Data and template are loaded. Select a view from the right panel to begin.</p>
+                </div>
+            </div>
+            <!-- Collapsed state content for left panel -->
+            <div id="left-panel-collapsed-content" class="hidden flex-col items-center justify-center p-2 space-y-4">
+                <button id="collapsed-upload-btn" class="interactive-button p-2 rounded-full bg-green-600 text-white">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                    </svg>
+                </button>
+            </div>
+        </aside>
+
+        <div id="resizer-left" class="resizer"></div>
+        
+        <main id="center-panel" class="panel bg-white">
+            <div class="panel-content p-3 md:p-4">
+                <div id="app-content">
+                    <div id="home-page" class="app-page active">
+                        <div class="max-w-2xl mx-auto text-center mt-12">
+                            <h2 class="text-2xl font-bold text-slate-700" data-i18n="homeTitle">Start Your Data Analysis</h2>
+                            <p class="text-slate-500 mt-1" data-i18n="homeSubtitle">Upload CSV files to begin configuring your template.</p> 
+                        </div>
+                    </div>
+                    <div id="file-management-page" class="app-page space-y-4"></div>
+                    <div id="analysis-page" class="app-page space-y-4">
+                        <div id="chart-view-container" class="hidden space-y-4">
+                            <!-- Trend Chart Section -->
+                            <div class="bg-white p-4 rounded-lg shadow border border-green-500">
+                                <h3 class="font-bold text-lg mb-2" data-i18n="summaryTrendAnalysis">Trend Analysis</h3>
+                                <div class="grid grid-cols-3 gap-4 mb-4">
+                                    <div>
+                                        <label for="line-dimension-select" class="font-semibold text-xs">Dimension</label>
+                                        <select id="line-dimension-select" class="w-full mt-1 p-2 text-xs border rounded-lg custom-select"></select>
+                                    </div>
+                                    <div>
+                                        <label for="line-measure-select-1" class="font-semibold text-xs">Measure 1</label>
+                                        <select id="line-measure-select-1" class="w-full mt-1 p-2 text-xs border rounded-lg custom-select"></select>
+                                    </div>
+                                    <div>
+                                        <label for="line-measure-select-2" class="font-semibold text-xs">Measure 2 (Optional)</label>
+                                        <select id="line-measure-select-2" class="w-full mt-1 p-2 text-xs border rounded-lg custom-select"></select>
+                                    </div>
+                                </div>
+                                <div class="h-80">
+                                    <canvas id="line-chart"></canvas>
+                                </div>
+                            </div>
+
+                            <div class="bg-white p-4 rounded-lg shadow border border-green-500">
+                                <h3 class="font-bold text-lg mb-2">Pie Chart</h3>
+                                <div class="grid grid-cols-3 gap-8">
+                                    <div class="col-span-2 h-80">
+                                        <canvas id="pie-chart"></canvas>
+                                    </div>
+                                    <div class="col-span-1 space-y-4">
+                                        <div>
+                                            <label for="pie-dimension-select" class="font-semibold text-xs">Dimension</label>
+                                            <select id="pie-dimension-select" class="w-full mt-1 p-2 text-xs border rounded-lg custom-select"></select>
+                                        </div>
+                                        <div>
+                                            <label for="pie-measure-select" class="font-semibold text-xs">Measure</label>
+                                            <select id="pie-measure-select" class="w-full mt-1 p-2 text-xs border rounded-lg custom-select"></select>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Scatter Plot Section -->
+                            <div class="bg-white p-4 rounded-lg shadow border border-green-500">
+                                <h3 class="font-bold text-lg mb-2">Scatter Plot</h3>
+                                <div class="grid grid-cols-3 gap-4 mb-4">
+                                    <div>
+                                        <label for="scatter-x-axis" class="font-semibold text-xs">X-Axis</label>
+                                        <select id="scatter-x-axis" class="w-full mt-1 p-2 text-xs border rounded-lg custom-select"></select>
+                                    </div>
+                                    <div>
+                                        <label for="scatter-y-axis" class="font-semibold text-xs">Y-Axis</label>
+                                        <select id="scatter-y-axis" class="w-full mt-1 p-2 text-xs border rounded-lg custom-select"></select>
+                                    </div>
+                                    <div>
+                                        <label for="scatter-group-by" class="font-semibold text-xs">Group By</label>
+                                        <select id="scatter-group-by" class="w-full mt-1 p-2 text-xs border rounded-lg custom-select"></select>
+                                    </div>
+                                </div>
+                                <div class="h-96">
+                                    <canvas id="scatter-chart"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                        <div id="table-container"></div>
+                    </div>
+                    <div id="comparison-page" class="app-page space-y-4">
+                        <div class="bg-white p-4 rounded-lg shadow border border-green-500">
+                            <div id="comparison-report-table-container"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <div id="resizer-right" class="resizer"></div>
+        
+        <aside id="right-panel" class="panel">
+            <div class="p-3 border-b flex-shrink-0 flex justify-between items-center">
+                <h2 class="text-base font-bold text-slate-800" data-i18n="controlsTitle">Controls</h2>
+                <button id="right-panel-toggle-btn" class="panel-toggle-btn">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                </button>
+            </div>
+            <div class="panel-content p-3 divide-y divide-slate-200">
+                <div class="py-4 first:pt-0 last:pb-0">
+                    <h3 class="font-semibold text-xs text-slate-500 uppercase tracking-wider mb-2 hidden" data-i18n="viewsTitle">VIEWS</h3>
+                    <div id="view-buttons" class="grid grid-cols-2 gap-2">
+                        <button class="view-btn interactive-button text-sm p-3 rounded-lg font-semibold nav-link-active" data-view="table">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="3" y1="15" x2="21" y2="15"></line><line x1="9" y1="3" x2="9" y2="21"></line><line x1="15" y1="3" x2="15" y2="21"></line></svg>
+                            <span data-i18n="viewTable"></span>
+                        </button>
+                        <button class="view-btn interactive-button text-sm p-3 rounded-lg font-semibold" data-view="daily">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+                            <span data-i18n="viewDaily"></span>
+                        </button>
+                        <button class="view-btn interactive-button text-sm p-3 rounded-lg font-semibold" data-view="chart">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"></path><path d="M22 12A10 10 0 0 0 12 2v10z"></path></svg>
+                            <span data-i18n="viewChart"></span>
+                        </button>
+                        <button class="view-btn interactive-button text-sm p-3 rounded-lg font-semibold" data-view="comparison">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="3"></circle><circle cx="6" cy="6" r="3"></circle><path d="M13 6h3a2 2 0 0 1 2 2v7"></path><path d="M11 18H8a2 2 0 0 1-2-2V9"></path></svg>
+                            <span data-i18n="navComparison"></span>
+                        </button>
+
+                    </div>
+                </div>
+                <div id="targets-section" class="py-4 first:pt-0 last:pb-0 hidden">
+                    <h3 class="font-semibold text-xs text-slate-500 uppercase tracking-wider mb-2" data-i18n="targetsTitle">TARGETS</h3>
+                    <div id="target-setting-container" class="flex mt-2 bg-white border-2 border-slate-200 rounded-lg focus-within:ring-2 focus-within:ring-green-500 focus-within:border-green-500 transition-all duration-150 shadow-sm">
+                        <select id="target-measure-select" class="custom-select text-sm block w-full focus:ring-0 border-0 rounded-l-md bg-transparent pl-3"></select>
+                        <input type="number" id="target-value-input" placeholder="Value" min="0" class="w-32 px-3 py-2 text-sm bg-transparent focus:outline-none focus:ring-0 rounded-r-md border-l-2 border-slate-200">
+                    </div>
+                </div>
+                <div id="global-filters-section" class="py-4 first:pt-0 last:pb-0 hidden">
+                    <h3 class="font-semibold text-xs text-slate-500 uppercase tracking-wider mb-2" data-i18n="filtersTitle">Global Filters</h3>
+                    <div class="space-y-3">
+                        <!-- Date Filters -->
+                        <div>
+                            <label for="date-range-preset-select" class="font-semibold text-xs" data-i18n="dateRangePresets"></label>
+                            <select id="date-range-preset-select" class="w-full mt-1 p-2 text-xs border rounded-lg custom-select">
+                                <option value="custom" data-i18n="datePresetCustom"></option>
+                                <option value="yesterday" data-i18n="datePresetYesterday"></option>
+                                <option value="last_7_days" data-i18n="datePresetLast7Days"></option>
+                                <option value="this_month" data-i18n="datePresetThisMonth"></option>
+                                <option value="last_month" data-i18n="datePresetLastMonth"></option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="font-semibold text-xs" data-i18n="headerMainPeriod">Main Period</label>
+                            <input type="text" id="header-date-filter-input-right" class="w-full mt-1 p-2 text-xs border rounded-lg bg-white cursor-pointer text-center font-semibold">
+                        </div>
+                        <div>
+                            <label class="font-semibold text-xs" data-i18n="headerComparisonPeriod">Comparison Period</label>
+                            <input type="text" id="comparison-date-filter-input-right" class="w-full mt-1 p-2 text-xs border rounded-lg bg-white cursor-pointer text-center font-semibold" readonly>
+                        </div>
+                        
+                        <!-- Dimension Filters -->
+                        <div class="space-y-2 pt-2">
+                             <h4 class="font-semibold text-xs text-slate-600" data-i18n="dimensionFilters"></h4>
+                             <div id="active-filters-list" class="space-y-1"></div>
+                             <div>
+                                <button id="toggle-add-filter-btn" class="interactive-button w-full text-xs px-3 py-1.5 font-semibold rounded-lg bg-white border border-slate-300 text-slate-600">
+                                    <span data-i18n="addNewFilter">Add New Filter</span>
+                                </button>
+                                <div id="add-filter-form" class="hidden mt-2 border rounded-md p-2 bg-slate-50 space-y-2">
+                                    <select id="filter-dimension-select" class="custom-select w-full p-2 text-xs border rounded-md"></select>
+                                    <select id="filter-condition-select" class="custom-select w-full p-2 text-xs border rounded-md">
+                                        <option value="contains" data-i18n="filterConditionContains"></option>
+                                        <option value="not_contains" data-i18n="filterConditionNotContains"></option>
+                                        <option value="exact_match" data-i18n="filterConditionExactMatch"></option>
+                                        <option value="not_exact_match" data-i18n="filterConditionNotExactMatch"></option>
+                                        <option value="starts_with" data-i18n="filterConditionStartsWith"></option>
+                                        <option value="ends_with" data-i18n="filterConditionEndsWith"></option>
+                                    </select>
+                                    <input type="text" id="filter-value-input" data-i18n-placeholder="filterValuePlaceholder" class="w-full p-2 text-xs border rounded-md">
+                                    <button id="add-new-filter-btn" class="interactive-button w-full text-xs px-3 py-1.5 font-semibold rounded-lg bg-emerald-500 text-white disabled:opacity-50" disabled data-i18n="filterAddButton"></button>
+                                </div>
+                             </div>
+                        </div>
+
+                        <!-- Action Buttons -->
+                        <div class="flex gap-2 pt-2">
+                            <button id="reset-filters-btn" class="interactive-button w-full px-3 py-1.5 text-xs font-semibold rounded-lg bg-white text-slate-700 border border-slate-300 hover:bg-slate-50" data-i18n="filterReset">Reset</button>
+                            <button id="apply-filters-btn" class="interactive-button w-full px-3 py-1.5 text-xs font-semibold rounded-lg bg-green-500 text-white shadow-sm" data-i18n="filterApply">Apply</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- Collapsed state content for right panel -->
+            <div id="right-panel-collapsed-content" class="hidden flex-col items-center justify-center p-2 space-y-4">
+                <div class="flex flex-col gap-2 mt-4">
+                    <button class="view-btn interactive-button p-2 rounded-lg" data-view="table">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="3" y1="15" x2="21" y2="15"></line><line x1="9" y1="3" x2="9" y2="21"></line><line x1="15" y1="3" x2="15" y2="21"></line></svg>
+                    </button>
+                    <button class="view-btn interactive-button p-2 rounded-lg" data-view="daily">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+                    </button>
+                    <button class="view-btn interactive-button p-2 rounded-lg" data-view="chart">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"></path><path d="M22 12A10 10 0 0 0 12 2v10z"></path></svg>
+                    </button>
+                    <button class="view-btn interactive-button p-2 rounded-lg" data-view="comparison">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="3"></circle><circle cx="6" cy="6" r="3"></circle><path d="M13 6h3a2 2 0 0 1 2 2v7"></path><path d="M11 18H8a2 2 0 0 1-2-2V9"></path></svg>
+                    </button>
+                </div>
+            </div>
+        </aside>
+
+
+
+    </div>
+
+
+
+    <!-- Save Template Modal -->
+    <div id="save-template-modal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden items-center justify-center p-4">
+        <div class="bg-white rounded-xl shadow-lg w-full max-w-sm text-sm">
+             <div class="p-3 border-b flex justify-between items-center">
+                <h3 class="text-base font-bold" data-i18n="saveTemplateModalTitle">Save Template</h3>
+                <button id="modal-cancel-save-btn" class="p-1 rounded-full hover:bg-slate-200"> <svg class="w-5 h-5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg> </button>
+            </div>
+            <div class="p-4 space-y-3">
+                 <div>
+                    <label for="modal-template-name-input" class="font-semibold text-xs mb-1 block" data-i18n="modalTemplateName">Template Name</label>
+                    <input type="text" id="modal-template-name-input" placeholder="e.g., Monthly Report" class="w-full px-3 py-2 text-sm rounded-lg border-2 border-slate-300 focus:ring-2 focus:ring-green-500">
+                </div>
+            </div>
+            <div class="p-3 border-t flex justify-end gap-2">
+                <button id="modal-cancel-save-btn-2" class="interactive-button px-4 py-2 text-sm font-semibold rounded-lg bg-slate-200 text-slate-700">Cancel</button>
+                <button id="modal-confirm-save-btn" class="interactive-button px-4 py-2 text-sm font-semibold rounded-lg bg-green-600 text-white">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notification Container -->
+    <div id="toast-container"></div>
+
+    <!-- Notification Panel -->
+    <div id="notification-panel" class="fixed bottom-20 left-1/2 transform -translate-x-1/2 z-[1001] hidden">
+        <div id="notification-content" class="bg-white shadow-lg rounded-lg p-4 flex items-center">
+            <p id="notification-message" class="text-sm font-medium"></p>
+            <button id="notification-close-btn" class="ml-4 text-slate-500 hover:text-slate-700">&times;</button>
+        </div>
+    </div>
+
+    
+
+<script type="module">
+    // version 1.6.2_DT0333 //
+    // --- App State ---
+    let allData = [], filteredData = [], csvHeaders = [], uploadedFileObjects = [], tempCalculatedFields = [];
+    let templateConfig = null, currentLanguage = 'ja', currentCurrency = 'JPY', activeView = 'table';
+    let charts = {};
+    let headerFlatpickr = null, comparisonFlatpickr = null;
+    let headerFlatpickrRight = null, comparisonFlatpickrRight = null;
+    let activeDimensionFilters = [];
+    let nextFilterId = 1;
+    let customReportConfig = { dimensions: [], measures: [] };
+    let globalTarget = { measureName: '', value: null };
+    let comparisonReportConfig = { dimensions: [], measures: [] };
+    let sortState = { column: null, direction: 'asc' };
+    let comparisonState = { period2Range: null, groupByDimension: null, isPivotView: true };
+    let mainPeriodSelectedRange = null;
+    let comparisonPeriodSelectedRange = null;
+
+    // --- Constants ---
+    const HIDDEN_MEASURE_KEYWORDS = ['ctr', 'cvr', 'cpa', 'cpi', 'cpm', 'cpc'];
+    const CHART_COLORS_PASTEL = ['#7BC8F6', '#86DEB7', '#FFDCA4', '#FFA0A0', '#D8B4E2', '#A4B3E0', '#FFC482', '#92E2C8', '#F0A8A8', '#C0A0D2'];
+    const HIGHER_IS_BETTER_KEYWORDS = ['cost', 'gross', '費用', '粗'];
+
+    function isLowerIsBetter(measureName) {
+        const nameLower = measureName.toLowerCase();
+        if (HIGHER_IS_BETTER_KEYWORDS.some(keyword => nameLower.includes(keyword))) {
+            return false;
+        }
+        const measure = templateConfig.measures.find(m => m.name === measureName);
+        if (measure && measure.format === 'currency') {
+            return true;
+        }
+        return false;
+    }
+
+    // --- UI Text Translations ---
+    const uiTexts = {
+        ja: {
+            appTitle: "CABI君", leftPanelTitle: "データ", homeUploadTitle: "CSVをアップロード", homeSelectFiles: "ファイルを追加", homeTemplateConfigTitle: "テンプレート設定",
+            homeSelectFolder: "既存のテンプレートを読み込む", save: "新規テンプレートとして保存", modalDateColumn: "日付列 (必須)",
+            dragDropNote: "ドラッグ＆ドロップで列の順序を変更できます。",
+            modalDimensions: "ディメンション (分析軸)", modalMeasures: "メジャー (数値)", addCalculatedField: "計算列を追加",
+            resetConfig: "設定をリセット", saveTemplateModalTitle: "テンプレートを保存", modalTemplateName: "テンプレート名",
+            formatNumber: "数値", formatCurrency: "通貨", formatPercent: "パーセント", formatDecimal: "小数点",
+            homeTitle: "データ分析を始めよう", homeSubtitle: "CSVファイルをアップロードして、テンプレートを設定してください。",
+            analysisReadyTitle: "分析の準備ができました", analysisReadyMsg: "データとテンプレートが読み込まれました。右のパネルから表示を選択して分析を開始してください。",
+            controlsTitle: "コントロール", viewsTitle: "表示", filtersTitle: "グローバルフィルター",
+            navDashboard: "サマリー", navDaily: "日別", navComparison: "期間比較", navCustom: "カスタムレポート",
+            headerMainPeriod: "主期間", headerComparisonPeriod: "比較期間", addNewFilter: "新しいフィルターを追加",
+            filterApply: "適用", filterReset: "リセット", modalFilterTitle: "フィルター設定", headerFilterLabel: "フィルター",
+            headerTargetMeasureLabel: "目標",
+            targetsTitle: "目標",
+            summaryTrendAnalysis: "トレンド分析", summaryDetailsTitle: "詳細サマリー", tableTotal: "合計",
+            groupBy: "集計軸：", dailyTitle: "日別レポート", dailyDateHeader: "日付",
+            manageFiles: "管理", viewTable: "テーブル", viewDaily: "日別", viewChart: "チャート",
+            datePresetCustom: "カスタム範囲", datePresetYesterday: "昨日", datePresetLast7Days: "過去7日間",
+            datePresetThisMonth: "今月", datePresetLastMonth: "先月",
+            calcFieldNamePlaceholder: "新しい列名", calcFieldFormatNumber: "数値", calcFieldFormatCurrency: "通貨",
+            calcFieldFormatPercent: "パーセント", calcFieldFormatDecimal: "小数点",
+            calcFieldFormulaPlaceholder: "計算式 (例: cost / impression * 1000)", calcFieldAddButton: "追加",
+            filterValuePlaceholder: "値を入力", filterConditionContains: "含む", filterConditionNotContains: "含まない",
+            filterConditionExactMatch: "と等しい", filterConditionNotExactMatch: "と等しくない",
+            filterConditionStartsWith: "で始まる", filterConditionEndsWith: "で終わる", filterAddButton: "追加",
+            dateRangePresets: "期間プリセット", dimensionFilters: "ディメンションフィルター", selectDimension: "ディメンションを選択",
+            comparisonTitle: "期間比較レポート", comparisonPeriod1: "期間 1", comparisonPeriod2: "期間 2",
+            comparisonDifference: "差分", comparisonRatio: "比率",
+        },
+        en: {
+            appTitle: "CABI-KUN", leftPanelTitle: "Data", homeUploadTitle: "Upload CSV Files", homeSelectFiles: "Add file", homeTemplateConfigTitle: "Configure Template",
+            homeSelectFolder: "Load Existing Template", save: "Save as New Template", modalDateColumn: "Date Column (Required)",
+            dragDropNote: "Drag and drop to reorder columns.",
+            modalDimensions: "Dimensions", modalMeasures: "Measures", addCalculatedField: "Add Calculated Field",
+            resetConfig: "Reset Configuration", saveTemplateModalTitle: "Save Template", modalTemplateName: "Template Name",
+            formatNumber: "Number", formatCurrency: "Currency", formatPercent: "Percent", formatDecimal: "Decimal",
+            homeTitle: "Start Your Data Analysis", homeSubtitle: "Upload CSV files to begin configuring your template.",
+            analysisReadyTitle: "Ready for Analysis", analysisReadyMsg: "Data and template are loaded. Select a view from the right panel to begin.",
+            controlsTitle: "Controls", viewsTitle: "Views", filtersTitle: "Global Filters",
+            navDashboard: "Summary", navDaily: "Daily", navComparison: "Comparison",
+            headerMainPeriod: "Main Period", headerComparisonPeriod: "Comparison Period", addNewFilter: "Add New Filter",
+            filterApply: "Apply", filterReset: "Reset", modalFilterTitle: "Filter Settings", headerFilterLabel: "Filter",
+            headerTargetMeasureLabel: "Target",
+            targetsTitle: "TARGETS",
+            summaryTrendAnalysis: "Trend Analysis", summaryDetailsTitle: "Summary Details", tableTotal: "Total",
+            groupBy: "Group by:", dailyTitle: "Daily Report", dailyDateHeader: "Date",
+            manageFiles: "Files", viewTable: "Table", viewDaily: "Daily", viewChart: "Chart",
+            datePresetCustom: "Custom Range", datePresetYesterday: "Yesterday", datePresetLast7Days: "Last 7 days",
+            datePresetThisMonth: "This month", datePresetLastMonth: "Last month",
+            calcFieldNamePlaceholder: "New column name", calcFieldFormatNumber: "Number", calcFieldFormatCurrency: "Currency",
+            calcFieldFormatPercent: "Percent", calcFieldFormatDecimal: "Decimal",
+            calcFieldFormulaPlaceholder: "Formula (e.g., cost / impression * 1000)", calcFieldAddButton: "Add",
+            filterValuePlaceholder: "Enter value", filterConditionContains: "contains", filterConditionNotContains: "does not contain",
+            filterConditionExactMatch: "is equal to", filterConditionNotExactMatch: "is not equal to",
+            filterConditionStartsWith: "starts with", filterConditionEndsWith: "ends with", filterAddButton: "Add",
+            dateRangePresets: "Date Range Presets", dimensionFilters: "Dimension Filters", selectDimension: "Select Dimension",
+            comparisonTitle: "Period Comparison Report", comparisonPeriod1: "Period 1", comparisonPeriod2: "Period 2",
+            comparisonDifference: "Difference", comparisonRatio: "Ratio",
+        }
+    };
+
+    // --- DOM Elements ---
+    const el = {
+        loadingOverlay: document.getElementById('loading-overlay'),
+        appContainer: document.getElementById('app-container'),
+        leftPanel: document.getElementById('left-panel'),
+        leftPanelToggleBtn: document.getElementById('left-panel-toggle-btn'),
+        leftPanelCollapsedContent: document.getElementById('left-panel-collapsed-content'),
+        collapsedLeftPanelExpandBtn: document.getElementById('collapsed-left-panel-expand-btn'),
+        collapsedUploadBtn: document.getElementById('collapsed-upload-btn'),
+        // Left Panel
+        initialSetupView: document.getElementById('initial-setup-view'),
+        csvFilesInput: document.getElementById('csv-files-input'),
+        selectFilesBtn: document.getElementById('select-files-btn'),
+        manageFilesBtn: document.getElementById('manage-files-btn'),
+        
+        fileManagementPage: document.getElementById('file-management-page'),
+        templateConfigSection: document.getElementById('template-config-section'),
+        templateFilesInput: document.getElementById('template-files-input'),
+        loadTemplatesBtn: document.getElementById('load-templates-btn'),
+        saveTemplateBtn: document.getElementById('save-template-btn'),
+        templateDateColumn: document.getElementById('template-date-column'),
+        dimensionSearchInput: document.getElementById('dimension-search-input'),
+        dimensionCheckboxList: document.getElementById('dimension-checkbox-list'),
+        measureSearchInput: document.getElementById('measure-search-input'),
+        measureCheckboxList: document.getElementById('measure-checkbox-list'),
+        resetTemplateConfigBtn: document.getElementById('reset-template-config-btn'),
+        toggleCalculatedFieldBtn: document.getElementById('toggle-calculated-field-btn'),
+        calculatedFieldForm: document.getElementById('calculated-field-form'),
+        calculatedFieldNameInput: document.getElementById('calculated-field-name-input'),
+        calculatedFieldFormatSelect: document.getElementById('calculated-field-format-select'),
+        formulaInput: document.getElementById('formula-input'),
+        formulaSuggestions: document.getElementById('formula-suggestions'),
+        addCalculatedFieldConfirmBtn: document.getElementById('add-calculated-field-confirm-btn'),
+        analysisReadyView: document.getElementById('analysis-ready-view'),
+        startAnalysisBtn: document.getElementById('start-analysis-btn'),
+        
+        
+        // Center Panel
+        centerPanel: document.getElementById('center-panel'),
+        appContent: document.getElementById('app-content'),
+        homePage: document.getElementById('home-page'),
+        analysisPage: document.getElementById('analysis-page'),
+        chartViewContainer: document.getElementById('chart-view-container'),
+        tableContainer: document.getElementById('table-container'),
+        dashboardHeader: document.getElementById('dashboard-header'),
+        languageToggle: document.getElementById('language-toggle'),
+        currencyToggleBtn: document.getElementById('currency-toggle-btn'),
+        // Chart elements
+        lineDimensionSelect: document.getElementById('line-dimension-select'),
+        lineMeasureSelect1: document.getElementById('line-measure-select-1'),
+        lineMeasureSelect2: document.getElementById('line-measure-select-2'),
+        pieDimensionSelect: document.getElementById('pie-dimension-select'),
+        pieMeasureSelect: document.getElementById('pie-measure-select'),
+        scatterXAxis: document.getElementById('scatter-x-axis'),
+        scatterYAxis: document.getElementById('scatter-y-axis'),
+        scatterGroupBy: document.getElementById('scatter-group-by'),
+        // Right Panel
+        rightPanel: document.getElementById('right-panel'),
+        rightPanelToggleBtn: document.getElementById('right-panel-toggle-btn'),
+        rightPanelCollapsedContent: document.getElementById('right-panel-collapsed-content'),
+        collapsedRightPanelExpandBtn: document.getElementById('collapsed-right-panel-expand-btn'),
+        viewButtons: document.getElementById('view-buttons'),
+        targetsSection: document.getElementById('targets-section'),
+        globalFiltersSection: document.getElementById('global-filters-section'),
+        dateRangePresetSelect: document.getElementById('date-range-preset-select'),
+        headerDateFilterInputRight: document.getElementById('header-date-filter-input-right'),
+        // --- NEW Comparison Elements ---
+        comparisonDateFilterInputRight: document.getElementById('comparison-date-filter-input-right'),
+        comparisonDateRangeDisplay: document.getElementById('comparison-date-range-display'),
+        comparisonPage: document.getElementById('comparison-page'),
+        targetMeasureSelect: document.getElementById('target-measure-select'),
+        targetValueInput: document.getElementById('target-value-input'),
+        // Modals
+        saveTemplateModal: document.getElementById('save-template-modal'),
+        modalTemplateNameInput: document.getElementById('modal-template-name-input'),
+        modalConfirmSaveBtn: document.getElementById('modal-confirm-save-btn'),
+        modalCancelSaveBtn: document.getElementById('modal-cancel-save-btn'),
+        modalCancelSaveBtn2: document.getElementById('modal-cancel-save-btn-2'),
+        
+        // Filter Elements
+        toggleAddFilterBtn: document.getElementById('toggle-add-filter-btn'),
+        addFilterForm: document.getElementById('add-filter-form'),
+        activeFiltersList: document.getElementById('active-filters-list'),
+        filterDimensionSelect: document.getElementById('filter-dimension-select'),
+        filterConditionSelect: document.getElementById('filter-condition-select'),
+        filterValueInput: document.getElementById('filter-value-input'),
+        addNewFilterBtn: document.getElementById('add-new-filter-btn'),
+        resetFiltersBtn: document.getElementById('reset-filters-btn'),
+        applyFiltersBtn: document.getElementById('apply-filters-btn'),
+    };
+
+    // --- Initialization ---
+    document.addEventListener('DOMContentLoaded', () => {
+        el.loadingOverlay.style.display = 'none';
+        initEventListeners();
+        updateUIForLanguage();
+        setActiveView('home');
+        updateManageFilesButtonText();
+    });
+
+    // --- Event Listeners ---
+    function initEventListeners() {
+        // Left Panel
+        el.selectFilesBtn.addEventListener('click', () => el.csvFilesInput.click());
+        el.manageFilesBtn.addEventListener('click', () => setActiveView('files'));
+        el.csvFilesInput.addEventListener('change', handleFileSelection);
+        el.loadTemplatesBtn.addEventListener('click', () => el.templateFilesInput.click());
+        el.templateFilesInput.addEventListener('change', handleTemplateFileSelection);
+        el.saveTemplateBtn.addEventListener('click', openSaveTemplateModal);
+        el.resetTemplateConfigBtn.addEventListener('click', resetTemplateConfig);
+        el.templateDateColumn.addEventListener('change', debouncedUpdateAnalysis); // Explicitly trigger update on date column change
+        el.dimensionSearchInput.addEventListener('input', () => filterCheckboxList(el.dimensionSearchInput, el.dimensionCheckboxList));
+        el.measureSearchInput.addEventListener('input', () => filterCheckboxList(el.measureSearchInput, el.measureCheckboxList));
+        el.addCalculatedFieldConfirmBtn.addEventListener('click', addCalculatedField);
+        el.toggleCalculatedFieldBtn.addEventListener('click', () => {
+            el.calculatedFieldForm.classList.toggle('hidden');
+        });
+        el.formulaInput.addEventListener('input', handleFormulaInput);
+
+        // Panel Toggles
+        el.leftPanelToggleBtn.addEventListener('click', () => togglePanel(el.leftPanel, 'left'));
+        el.rightPanelToggleBtn.addEventListener('click', () => togglePanel(el.rightPanel, 'right'));
+        el.collapsedUploadBtn.addEventListener('click', () => el.csvFilesInput.click());
+
+        
+        
+        // Right Panel & Header
+        el.viewButtons.addEventListener('click', (e) => {
+            const btn = e.target.closest('.view-btn');
+            if (btn) {
+                setActiveView(btn.dataset.view);
+            }
+        });
+        el.rightPanelCollapsedContent.addEventListener('click', (e) => {
+            const btn = e.target.closest('.view-btn');
+            if (btn) {
+                setActiveView(btn.dataset.view);
+            }
+        });
+        el.dateRangePresetSelect.addEventListener('change', handleDatePresetChange);
+        el.toggleAddFilterBtn.addEventListener('click', () => {
+            el.addFilterForm.classList.toggle('hidden');
+        });
+        el.applyFiltersBtn.addEventListener('click', () => {
+            renderActiveView();
+        });
+        el.resetFiltersBtn.addEventListener('click', () => {
+            activeDimensionFilters = [];
+            renderActiveDimensionFilters();
+            renderActiveView(); // Also apply the reset immediately
+        });
+
+        el.addNewFilterBtn.addEventListener('click', addDimensionFilter);
+        el.activeFiltersList.addEventListener('click', (e) => {
+            const removeBtn = e.target.closest('.remove-filter-btn');
+            if (removeBtn) {
+                const filterId = parseInt(removeBtn.dataset.filterId, 10);
+                activeDimensionFilters = activeDimensionFilters.filter(f => f.id !== filterId);
+                renderActiveDimensionFilters();
+                debouncedUpdateAnalysis();
+            }
+        });
+
+        const checkAddFilterBtnState = () => {
+            el.addNewFilterBtn.disabled = !(el.filterDimensionSelect.value && el.filterValueInput.value.trim());
+        };
+        el.filterDimensionSelect.addEventListener('change', checkAddFilterBtnState);
+        el.filterValueInput.addEventListener('input', checkAddFilterBtnState);
+
+        // Modals
+        el.modalConfirmSaveBtn.addEventListener('click', confirmSaveTemplate);
+        el.modalCancelSaveBtn.addEventListener('click', closeSaveTemplateModal);
+        el.modalCancelSaveBtn2.addEventListener('click', closeSaveTemplateModal);
+        
+        // Other UI
+        el.measureCheckboxList.addEventListener('click', (e) => {
+            if (e.target.classList.contains('delete-calc-field-btn')) {
+                e.preventDefault();
+                const fieldName = e.target.dataset.fieldName;
+                deleteCalculatedField(fieldName, e.target.closest('label'));
+                debouncedUpdateAnalysis();
+            }
+        });
+
+        el.measureCheckboxList.addEventListener('change', (e) => {
+            const target = e.target;
+            if (target.matches('input[type="checkbox"]')) {
+                const formatSelect = target.closest('label').querySelector('.measure-format-select');
+                if (formatSelect) {
+                    formatSelect.style.display = target.checked ? 'inline-block' : 'none';
+                }
+                sortCheckboxList(el.measureCheckboxList);
+                debouncedUpdateAnalysis();
+            } else if (target.matches('.measure-format-select')) {
+                debouncedUpdateAnalysis();
+            }
+        });
+        el.languageToggle.addEventListener('change', (e) => {
+            currentLanguage = e.target.checked ? 'en' : 'ja';
+            updateUIForLanguage();
+        });
+        el.currencyToggleBtn.addEventListener('click', (e) => {
+            currentCurrency = (currentCurrency === 'JPY') ? 'USD' : 'JPY';
+            e.currentTarget.textContent = (currentCurrency === 'JPY') ? '¥' : '$';
+            renderActiveView();
+        });
+        el.targetMeasureSelect.addEventListener('change', handleTargetChange);
+        el.targetValueInput.addEventListener('change', handleTargetChange);
+        document.getElementById('notification-close-btn').addEventListener('click', () => {
+            document.getElementById('notification-panel').classList.add('hidden');
+        });
+
+        // Chart controls
+        [el.pieDimensionSelect, el.pieMeasureSelect, el.scatterXAxis, el.scatterYAxis, el.scatterGroupBy, el.lineDimensionSelect, el.lineMeasureSelect1, el.lineMeasureSelect2].forEach(select => {
+            if(select) select.addEventListener('change', () => renderActiveView());
+        });
+    }
+    // Resizer functionality
+    const leftPanel = document.getElementById('left-panel');
+    const rightPanel = document.getElementById('right-panel');
+    const resizerLeft = document.getElementById('resizer-left');
+    const resizerRight = document.getElementById('resizer-right');
+    const appContainer = document.getElementById('app-container');
+
+    let isResizingLeft = false;
+    let isResizingRight = false;
+
+    resizerLeft.addEventListener('mousedown', (e) => {
+        isResizingLeft = true;
+        appContainer.style.cursor = 'col-resize';
+        document.body.style.userSelect = 'none';
+    });
+
+    resizerRight.addEventListener('mousedown', (e) => {
+        isResizingRight = true;
+        appContainer.style.cursor = 'col-resize';
+        document.body.style.userSelect = 'none';
+    });
+
+    document.addEventListener('mousemove', (e) => {
+        if (isResizingLeft) {
+            const newLeftWidth = e.clientX;
+            if (newLeftWidth > 100 && newLeftWidth < window.innerWidth - 400) { // Min/Max width for left panel
+                leftPanel.style.width = `${newLeftWidth}px`;
+                document.documentElement.style.setProperty('--left-panel-width', `${newLeftWidth}px`);
+            }
+        } else if (isResizingRight) {
+            const newRightWidth = window.innerWidth - e.clientX;
+            if (newRightWidth > 100 && newRightWidth < window.innerWidth - 400) { // Min/Max width for right panel
+                rightPanel.style.width = `${newRightWidth}px`;
+                document.documentElement.style.setProperty('--right-panel-width', `${newRightWidth}px`);
+            }
+        }
+    });
+
+    document.addEventListener('mouseup', () => {
+        isResizingLeft = false;
+        isResizingRight = false;
+        appContainer.style.removeProperty('cursor');
+        document.body.style.removeProperty('user-select');
+    });
+    
+    function addLiveUpdateListeners() { 
+        ['change', 'click'].forEach(evt => el.templateConfigSection.addEventListener(evt, () => { debouncedUpdateAnalysis(); })); 
+    }
+
+    function togglePanel(panel, side) {
+        const isCollapsed = panel.classList.toggle('collapsed');
+        const panelContent = panel.querySelector('.panel-content');
+        const collapsedContent = panel.querySelector(`#${side}-panel-collapsed-content`);
+        const toggleBtn = panel.querySelector('.panel-toggle-btn');
+
+        // Update content visibility
+        if (isCollapsed) {
+            panelContent.style.display = 'none';
+            collapsedContent.style.display = 'flex';
+            panel.style.width = '60px'; // Explicitly set width when collapsed
+        } else {
+            panelContent.style.display = 'flex';
+            panelContent.style.flexDirection = 'column'; // Ensure children stack vertically
+            collapsedContent.style.display = 'none';
+            // Set panel width to the current computed value of the CSS variable
+            if (side === 'left') {
+                panel.style.width = getComputedStyle(document.documentElement).getPropertyValue('--left-panel-width');
+            } else {
+                panel.style.width = getComputedStyle(document.documentElement).getPropertyValue('--right-panel-width');
+            }
+            panelContent.offsetHeight; // Force reflow
+        }
+
+        // Update toggle button icon
+        if (side === 'left') {
+            toggleBtn.innerHTML = isCollapsed ? '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>' : '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>';
+        } else {
+            toggleBtn.innerHTML = isCollapsed ? '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>' : '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>';
+        }
+
+        // Determine gridTemplateColumns based on both panels' collapsed state
+        const isLeftCollapsed = el.leftPanel.classList.contains('collapsed');
+        const isRightCollapsed = el.rightPanel.classList.contains('collapsed');
+
+        let gridTemplateColumnsValue = '';
+        if (isLeftCollapsed && isRightCollapsed) {
+            gridTemplateColumnsValue = '60px 16px 1fr 16px 60px';
+        } else if (isLeftCollapsed) {
+            gridTemplateColumnsValue = '60px 16px 1fr 16px var(--right-panel-width)';
+        } else if (isRightCollapsed) {
+            gridTemplateColumnsValue = 'var(--left-panel-width) 16px 1fr 16px 60px';
+        } else {
+            gridTemplateColumnsValue = 'var(--left-panel-width) 16px 1fr 16px var(--right-panel-width)';
+        }
+        el.appContainer.style.gridTemplateColumns = gridTemplateColumnsValue;
+    }
+
+
+    // --- UI Flow & View Navigation ---
+
+
+    function setActiveView(view) {
+        activeView = view;
+
+        if (view === 'daily') {
+            sortState = { column: 'date', direction: 'asc' };
+        } else {
+            sortState = { column: null, direction: 'asc' };
+        }
+
+        el.viewButtons.querySelectorAll('.view-btn').forEach(btn => {
+            btn.classList.toggle('nav-link-active', btn.dataset.view === view);
+        });
+
+        el.homePage.classList.remove('active');
+        el.analysisPage.classList.remove('active');
+        el.fileManagementPage.classList.remove('active');
+        el.comparisonPage.classList.remove('active');
+
+        const isAnalysisView = ['table', 'daily', 'chart', 'comparison'].includes(view);
+
+        if (isAnalysisView) {
+            el.analysisPage.classList.add('active');
+            el.chartViewContainer.classList.toggle('hidden', view !== 'chart');
+            el.tableContainer.classList.toggle('hidden', view === 'chart' || view === 'comparison');
+            el.comparisonPage.classList.toggle('active', view === 'comparison');
+        } else if (view === 'files') {
+            el.fileManagementPage.classList.add('active');
+        } else { // home
+            el.homePage.classList.add('active');
+        }
+
+        // el.dashboardHeader.classList.toggle('hidden', !isAnalysisView); // Removed this line to always show the header
+        el.targetsSection.classList.toggle('hidden', !isAnalysisView);
+        el.globalFiltersSection.classList.toggle('hidden', !isAnalysisView);
+        
+        const analysisReady = !!templateConfig;
+        document.querySelectorAll('.view-btn').forEach(btn => {
+            const isAnalysisBtn = ['table', 'daily', 'chart', 'comparison'].includes(btn.dataset.view);
+            if (isAnalysisBtn) {
+                btn.disabled = !analysisReady;
+            } else {
+                btn.disabled = false; // Always enable non-analysis buttons
+            }
+        });
+
+        renderActiveView();
+    }
+
+    function renderActiveView() {
+        if (!templateConfig && ['table', 'daily', 'chart', 'comparison'].includes(activeView)) {
+             setActiveView('home');
+             showToast('Please load data and configure a template first.', 'info');
+             return;
+        }
+        
+        if (activeView === 'files') {
+            renderFileManagementPage();
+            return;
+        }
+
+        if (!['table', 'daily', 'chart', 'comparison'].includes(activeView)) {
+            return;
+        }
+
+        applyGlobalFilters();
+
+        switch (activeView) {
+            case 'chart':
+                renderChartView();
+                break;
+            case 'daily':
+                renderDailyTable();
+                break;
+            case 'table':
+                renderSummaryTable('table-container', templateConfig.dimensions);
+                break;
+            case 'comparison':
+                renderComparisonView();
+                break;
+        }
+    }
+
+    function setupTargetSelect() {
+        el.targetMeasureSelect.innerHTML = '';
+        el.targetMeasureSelect.innerHTML += `<option value="">(None)</option>`;
+        if (templateConfig && templateConfig.measures) {
+            templateConfig.measures.forEach(m => {
+                el.targetMeasureSelect.innerHTML += `<option value="${m.name}">${m.name}</option>`;
+            });
+        }
+        
+        if (globalTarget.measureName && templateConfig.measures.some(m => m.name === globalTarget.measureName)) {
+             el.targetMeasureSelect.value = globalTarget.measureName;
+             el.targetValueInput.value = globalTarget.value !== null ? globalTarget.value : '';
+        } else {
+             globalTarget = { measureName: '', value: null };
+             el.targetMeasureSelect.value = '';
+             el.targetValueInput.value = '';
+        }
+    }
+
+    function initializeAnalysisView() {
+        el.analysisReadyView.style.display = 'none';
+        el.templateConfigSection.classList.remove('hidden'); 
+        addLiveUpdateListeners();
+        setupChartControls();
+        setupTargetSelect();
+        // Initialize comparisonReportConfig with default values
+        comparisonReportConfig = { dimensions: [templateConfig.dimensions[0]], measures: templateConfig.measures.map(m => m.name) };
+        setActiveView('table'); // Default to table view
+    }
+
+    function getFormulaDependencies() {
+        const calculatedMeasures = templateConfig.measures.filter(m => m.isCalculated);
+        if (calculatedMeasures.length === 0) return new Set();
+
+        const allCalcMeasureNames = new Set(calculatedMeasures.map(m => m.name));
+        const dependencies = new Set();
+
+        const operatorsRegex = /[+\-*/()\s]+/;
+
+        function findDeps(formula) {
+            const identifiers = formula.split(operatorsRegex).filter(Boolean);
+            identifiers.forEach(id => {
+                if (isNaN(id) && !allCalcMeasureNames.has(id)) {
+                    dependencies.add(id);
+                }
+            });
+        }
+
+        calculatedMeasures.forEach(measure => findDeps(measure.formula));
+        return dependencies;
+    }
+
+    // New helper function
+    function updateAnalysisButtonStates() {
+        const analysisReady = !!templateConfig;
+        document.querySelectorAll('.view-btn').forEach(btn => {
+            const isAnalysisBtn = ['table', 'daily', 'chart', 'comparison'].includes(btn.dataset.view);
+            if (isAnalysisBtn) {
+                btn.disabled = !analysisReady;
+            } else {
+                btn.disabled = false; // Always enable non-analysis buttons
+            }
+        });
+    }
+
+    function updateAnalysis() {
+        updateTemplateConfigFromUI();
+
+        // Call the new helper function to update button states
+        updateAnalysisButtonStates();
+
+        if (!templateConfig) {
+            // If no template is configured, ensure analysis views are hidden and return to home.
+            el.analysisReadyView.style.display = 'none'; // Ensure "Ready for Analysis" message is hidden
+            el.templateConfigSection.classList.remove('hidden'); // Ensure template config is visible for user to set up
+            return;
+        }
+
+        normalizeData();
+        setupGlobalFilters();
+        setupChartControls();
+        setupTargetSelect();
+        // The following view switching logic will handle showing the correct analysis page.
+        // No need for a separate showAnalysisPage(true) call.
+
+        // --- User Requirement: View Switching Logic ---
+        // 1. If currently on 'file management' or 'home' page, switch to 'table' view.
+        //    This ensures that after file uploads or initial setup, the user lands on an analysis view.
+        // 2. If on any other analysis page (table, daily, chart), stay on that page and re-render.
+        if (activeView === 'files' || activeView === 'home') {
+            setActiveView('table');
+        } else {
+            renderActiveView();
+        }
+    }
+
+    // --- Data Processing & Rendering ---
+    function normalizeData() {
+        const dateCol = templateConfig.dateColumn;
+        if (!allData[0] || allData[0][dateCol] === undefined) { 
+            showInAppNotification(`Error: Date column "${dateCol}" not found in data.`, 'error');
+            resetTemplateConfig();
+            return;
+        }
+
+        const dependencies = getFormulaDependencies();
+        const baseMeasures = templateConfig.measures.filter(m => !m.isCalculated).map(m => m.name);
+        const fieldsToParse = [...new Set([...baseMeasures, ...dependencies])];
+
+        allData.forEach(row => {
+            // Only process if row.date is not already set, indicating it hasn't been normalized
+            if (row.date === undefined) {
+                const dateValue = row[dateCol];
+                if (dateValue) {
+                    const parts = dateValue.split(/[-/]/); // handle YYYY-MM-DD or YYYY/MM/DD
+                    if (parts.length === 3) {
+                        // Create date in UTC to avoid timezone shift
+                        const utcDate = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2]));
+                        row.date = utcDate.toISOString().split('T')[0];
+                    } else {
+                        row.date = null;
+                    }
+                } else {
+                    row.date = null;
+                }
+            }
+
+            fieldsToParse.forEach(fieldName => {
+                if (row[fieldName] !== undefined && typeof row[fieldName] === 'string') { // Only parse if it's a string
+                    row[fieldName] = parseFloat(String(row[fieldName]).replace(/,/g, '')) || 0;
+                }
+            });
+        });
+        allData = allData.filter(row => row.date);
+    }
+
+    function applyGlobalFilters() {
+        const [startDate, endDate] = el.headerDateFilterInputRight.value.split(' to ');
+        filteredData = allData.filter(d => {
+            const rowDate = d.date;
+            if (startDate && endDate) {
+                if (!(rowDate >= startDate && rowDate <= endDate)) return false;
+            } else if (startDate) {
+                if (rowDate !== startDate) return false;
+            }
+            
+            return activeDimensionFilters.every(f => {
+                const rowValue = String(d[f.dimension] || '').toLowerCase();
+                const filterValue = String(f.value).toLowerCase();
+                switch (f.condition) {
+                    case 'contains': return rowValue.includes(filterValue);
+                    case 'not_contains': return !rowValue.includes(filterValue);
+                    case 'exact_match': return rowValue === filterValue;
+                    case 'not_exact_match': return rowValue !== filterValue;
+                    case 'starts_with': return rowValue.startsWith(filterValue);
+                    case 'ends_with': return rowValue.endsWith(filterValue);
+                    default: return true;
+                }
+            });
+        });
+    }
+    
+    function setupChartControls() {
+        if (!templateConfig) return;
+        const measures = templateConfig.measures.map(m => `<option value="${m.name}">${m.name}</option>`).join('');
+        const numericMeasures = templateConfig.measures
+            .filter(m => m.format === 'number' || m.format === 'currency')
+            .map(m => `<option value="${m.name}">${m.name}</option>`).join('');
+        const dimensions = templateConfig.dimensions.map(d => `<option value="${d}">${d}</option>`).join('');
+
+        el.lineDimensionSelect.innerHTML = `<option value="${templateConfig.dateColumn}">${templateConfig.dateColumn}</option>${dimensions}`;
+        el.lineMeasureSelect1.innerHTML = measures;
+        el.lineMeasureSelect2.innerHTML = '<option value="">(None)</option>' + measures;
+
+        el.pieDimensionSelect.innerHTML = dimensions;
+        el.pieMeasureSelect.innerHTML = numericMeasures;
+
+        el.scatterXAxis.innerHTML = measures;
+        el.scatterYAxis.innerHTML = measures;
+        el.scatterGroupBy.innerHTML = dimensions;
+
+        // Set default selections
+        if (templateConfig.measures.length > 0) {
+            el.lineMeasureSelect1.selectedIndex = 0;
+        }
+        if (templateConfig.measures.length > 1) {
+            el.lineMeasureSelect2.selectedIndex = 1;
+            el.scatterYAxis.selectedIndex = 1;
+        }
+    }
+
+    function renderChartView() {
+        renderLineChart();
+        renderPieChart();
+        renderScatterPlot();
+    }
+
+    function renderLineChart() {
+        const lineCtx = document.getElementById('line-chart').getContext('2d');
+        if(charts.line) charts.line.destroy();
+
+        const dimension = el.lineDimensionSelect.value || templateConfig.dateColumn;
+        const measure1 = el.lineMeasureSelect1.value;
+        const measure2 = el.lineMeasureSelect2.value;
+
+        if (!measure1) return;
+
+        const isTimeSeries = dimension === templateConfig.dateColumn;
+        const dataKey = isTimeSeries ? 'date' : dimension;
+
+        // Use groupAndCalculateData to get correctly aggregated and calculated data
+        const groupedData = Object.values(groupAndCalculateData(filteredData, [dataKey]));
+
+        // Sort the data by the dimension/date
+        groupedData.sort((a, b) => {
+            if (a[dataKey] < b[dataKey]) return -1;
+            if (a[dataKey] > b[dataKey]) return 1;
+            return 0;
+        });
+
+        const labels = groupedData.map(d => d[dataKey]);
+
+        const measuresToShowNames = [measure1];
+        if (measure2) {
+            measuresToShowNames.push(measure2);
+        }
+
+        const datasets = measuresToShowNames.map((measureName, i) => {
+            if (!measureName) return null;
+            return {
+                label: measureName,
+                // Data is now a direct map from the pre-aggregated groupedData
+                data: groupedData.map(item => item[measureName] || 0),
+                borderColor: CHART_COLORS_PASTEL[i],
+                yAxisID: i === 0 ? 'y' : 'y1',
+                tension: 0.1
+            };
+        }).filter(Boolean);
+
+        if (globalTarget.measureName && globalTarget.value !== null) {
+            measuresToShowNames.forEach((measureName, i) => {
+                if (measureName === globalTarget.measureName) {
+                    datasets.push({
+                        label: `${measureName} Target`,
+                        data: labels.map(() => globalTarget.value),
+                        borderColor: '#ef4444',
+                        borderWidth: 2,
+                        borderDash: [5, 5],
+                        fill: false,
+                        type: 'line',
+                        yAxisID: i === 0 ? 'y' : 'y1',
+                        pointRadius: 0,
+                        tension: 0
+                    });
+                }
+            });
+        }
+
+        charts.line = new Chart(lineCtx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: datasets
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: {
+                        type: isTimeSeries ? 'time' : 'category',
+                        time: isTimeSeries ? { 
+                            unit: 'day',
+                            tooltipFormat: 'yy/MM/dd',
+                            displayFormats: {
+                                day: 'yy/MM/dd'
+                            }
+                        } : undefined,
+                        grid: {
+                           drawOnChartArea: false
+                        }
+                    },
+                    y: { position: 'left', grid: { drawOnChartArea: true, color: '#e5e7eb' } },
+                    y1: { position: 'right', grid: { drawOnChartArea: false }, display: !!measure2 }
+                }
+            }
+        });
+    }
+
+    function renderPieChart() {
+        const dimension = el.pieDimensionSelect.value;
+        const measure = el.pieMeasureSelect.value;
+
+        if (!dimension || !measure) return;
+
+        const groupedData = Object.values(groupAndCalculateData(filteredData, [dimension]));
+        
+        const labels = groupedData.map(item => item[dimension]);
+        const data = groupedData.map(item => item[measure]);
+
+        const pieCtx = document.getElementById('pie-chart').getContext('2d');
+        if (charts.pie) charts.pie.destroy();
+
+        charts.pie = new Chart(pieCtx, {
+            type: 'pie',
+            data: {
+                labels: labels,
+                datasets: [{
+                    data: data,
+                    backgroundColor: CHART_COLORS_PASTEL,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { 
+                        position: 'right', 
+                        align: 'start'
+                    },
+                }
+            }
+        });
+    }
+
+    function renderScatterPlot() {
+        const xMetric = el.scatterXAxis.value;
+        const yMetric = el.scatterYAxis.value;
+        const groupBy = el.scatterGroupBy.value;
+
+        if (!xMetric || !yMetric || !groupBy) return;
+
+        const groupedData = groupAndCalculateData(filteredData, [groupBy]);
+        const processedData = Object.values(groupedData);
+
+        const groupLabels = [...new Set(processedData.map(item => item[groupBy]))];
+        const datasets = groupLabels.map((label, index) => {
+            const groupData = processedData.filter(item => item[groupBy] === label);
+            return {
+                label: label,
+                data: groupData.map(item => ({ x: item[xMetric], y: item[yMetric] })),
+                backgroundColor: CHART_COLORS_PASTEL[index % CHART_COLORS_PASTEL.length],
+            };
+        });
+
+        const scatterCtx = document.getElementById('scatter-chart').getContext('2d');
+        if (charts.scatter) charts.scatter.destroy();
+
+        charts.scatter = new Chart(scatterCtx, {
+            type: 'scatter',
+            data: { datasets },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: { title: { display: true, text: xMetric } },
+                    y: { title: { display: true, text: yMetric } }
+                },
+                plugins: {
+                    legend: { position: 'top' },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                let label = context.dataset.label || '';
+                                if (label) { label += ': '; }
+                                if (context.parsed.x !== null) {
+                                    label += `(${context.parsed.x.toFixed(2)}, ${context.parsed.y.toFixed(2)})`;
+                                }
+                                return label;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    function renderSummaryTable(containerId, groupBy = null) {
+        const container = document.getElementById(containerId);
+        if (!container) return;
+
+        const isGrouped = !!groupBy && (Array.isArray(groupBy) ? groupBy.length > 0 : true);
+        let dataToRender;
+        let headers;
+        let groupByFields = [];
+
+        if (isGrouped) {
+            groupByFields = Array.isArray(groupBy) ? groupBy : [groupBy];
+            dataToRender = Object.values(groupAndCalculateData(filteredData, groupByFields));
+            headers = [...groupByFields, ...templateConfig.measures.map(m => m.name)];
+        } else {
+            dataToRender = processCalculatedFields(filteredData);
+            headers = [...templateConfig.dimensions, ...templateConfig.measures.map(m => m.name)];
+            groupByFields = templateConfig.dimensions;
+        }
+
+        let tableHTML = '<div class="bg-white p-4 rounded-lg shadow border border-green-500"><table class="w-full text-sm"><thead><tr class="border-b">';
+        headers.forEach(h => {
+            const isMeasure = templateConfig.measures.some(m => m.name === h);
+            const alignClass = isMeasure ? 'text-right' : 'text-left';
+            tableHTML += `<th class="p-3 ${alignClass} font-semibold text-slate-600 sortable-header cursor-pointer" data-column-id="${h}">${h}<span class="sort-indicator"></span></th>`;
+        });
+        tableHTML += '</tr></thead><tbody>';
+
+        if (sortState.column) {
+            dataToRender.sort((a, b) => {
+                const valA = a[sortState.column];
+                const valB = b[sortState.column];
+                if (valA < valB) return sortState.direction === 'asc' ? -1 : 1;
+                if (valA > valB) return sortState.direction === 'asc' ? 1 : -1;
+                return 0;
+            });
+        }
+
+        dataToRender.forEach(item => {
+            tableHTML += '<tr class="border-b last:border-b-0 hover:bg-slate-50">';
+            headers.forEach(h => { 
+                const value = item[h];
+                const isMeasure = templateConfig.measures.some(m => m.name === h);
+                if (isMeasure) {
+                    const measure = templateConfig.measures.find(m => m.name === h);
+                    let cellContent = formatNumber(value, measure ? measure.format : 'number');
+
+                    if (h === globalTarget.measureName && globalTarget.value !== null && globalTarget.value > 0) {
+                        const target = globalTarget.value;
+                        const percentageRatio = (value / target);
+                        const lowerIsBetter = isLowerIsBetter(h);
+
+                        let indicatorClass;
+                        if (lowerIsBetter) {
+                            if (percentageRatio <= 1) indicatorClass = 'text-green-600 bg-green-100';
+                            else if (percentageRatio <= 1.25) indicatorClass = 'text-yellow-700 bg-yellow-100';
+                            else indicatorClass = 'text-red-600 bg-red-100';
+                        } else { // Higher is better
+                            if (percentageRatio >= 1) indicatorClass = 'text-green-600 bg-green-100';
+                            else if (percentageRatio >= 0.75) indicatorClass = 'text-yellow-700 bg-yellow-100';
+                            else indicatorClass = 'text-red-600 bg-red-100';
+                        }
+
+                        cellContent = `
+                            <div class="flex flex-col items-end">
+                                <span>${formatNumber(value, measure ? measure.format : 'number')}</span>
+                                <span class="text-xs font-medium ${indicatorClass} rounded-full px-2 mt-0.5">${(percentageRatio * 100).toFixed(1)}%</span>
+                            </div>
+                        `;
+                    }
+                    tableHTML += `<td class="p-3 text-right"><div class="text-slate-800">${cellContent}</div></td>`;
+                } else {
+                    tableHTML += `<td class="p-3 text-left text-slate-700">${value}</td>`;
+                }
+            });
+            tableHTML += '</tr>';
+        });
+        tableHTML += '</tbody>';
+
+        const totals = calculateTotals(filteredData);
+        let totalRowHTML = '<tr class="border-t-2 font-bold bg-slate-50">';
+        headers.forEach((h, index) => {
+            const isDimensionColumn = groupByFields.includes(h);
+            if (isDimensionColumn) {
+                if (index === 0) {
+                    totalRowHTML += `<td class="p-3">Total</td>`;
+                } else {
+                    totalRowHTML += `<td></td>`;
+                }
+                return;
+            }
+
+            const measure = templateConfig.measures.find(m => m.name === h);
+            const value = totals[h];
+            let cellContent = formatNumber(value, measure ? measure.format : 'number');
+
+            if (h === globalTarget.measureName && globalTarget.value !== null && globalTarget.value > 0) {
+                const target = globalTarget.value;
+                const percentageRatio = (value / target);
+                const lowerIsBetter = isLowerIsBetter(h);
+
+                let indicatorClass;
+                if (lowerIsBetter) {
+                    if (percentageRatio <= 1) indicatorClass = 'text-green-600 bg-green-100';
+                    else if (percentageRatio <= 1.25) indicatorClass = 'text-yellow-700 bg-yellow-100';
+                    else indicatorClass = 'text-red-600 bg-red-100';
+                } else { // Higher is better
+                    if (percentageRatio >= 1) indicatorClass = 'text-green-600 bg-green-100';
+                    else if (percentageRatio >= 0.75) indicatorClass = 'text-yellow-700 bg-yellow-100';
+                    else indicatorClass = 'text-red-600 bg-red-100';
+                }
+
+                cellContent = `
+                    <div class="flex flex-col items-end">
+                        <span class="font-semibold">${formatNumber(value, measure ? measure.format : 'number')}</span>
+                        <span class="text-xs font-medium ${indicatorClass} rounded-full px-2 mt-0.5">${(percentageRatio * 100).toFixed(1)}%</span>
+                    </div>
+                `;
+            }
+            totalRowHTML += `<td class="p-3 text-right">${cellContent}</td>`;
+        });
+        totalRowHTML += '</tr>';
+
+        tableHTML += `<tfoot>${totalRowHTML}</tfoot></table></div>`;
+        
+        container.innerHTML = tableHTML;
+
+        const tableElement = container.querySelector('table');
+        tableElement.querySelectorAll('.sortable-header').forEach(th => {
+            const columnId = th.dataset.columnId;
+            const indicator = th.querySelector('.sort-indicator');
+            if (sortState.column === columnId) {
+                th.classList.add('active');
+                indicator.innerHTML = sortState.direction === 'asc' ? '&#9650;' : '&#9660;';
+            }
+            th.addEventListener('click', () => {
+                if (sortState.column === columnId) {
+                    sortState.direction = sortState.direction === 'asc' ? 'desc' : 'asc';
+                } else {
+                    sortState.column = columnId;
+                    sortState.direction = 'asc';
+                }
+                renderSummaryTable(containerId, groupBy);
+            });
+        });
+    }
+    
+    function renderDailyTable() {
+        renderSummaryTable('table-container', 'date');
+    }
+
+    function formatComparisonValue(num, format, isDifference = false) {
+        if (!isFinite(num)) return '-';
+
+        const numberToFormat = (num === undefined || num === null || isNaN(num)) ? 0 : num;
+        let formatted = '';
+
+        switch(format) {
+            case 'currency': formatted = numberToFormat.toLocaleString(undefined, {style: 'currency', currency: currentCurrency, minimumFractionDigits: 0, maximumFractionDigits: 0}); break;
+            case 'percent': formatted = (numberToFormat * 100).toFixed(2) + '%'; break;
+            case 'decimal': formatted = numberToFormat.toFixed(2); break;
+            default: formatted = numberToFormat.toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 0}); break;
+        }
+
+        if (isDifference) {
+            if (numberToFormat > 0) {
+                return `<span class="text-green-600">${formatted}</span>`;
+            } else if (numberToFormat < 0) {
+                return `<span class="text-red-600">${formatted}</span>`;
+            }
+        }
+        return formatted;
+    }
+
+    function renderComparisonView() {
+        const container = document.getElementById('comparison-report-table-container');
+        if (!container) return;
+
+        const [mainPeriodStart, mainPeriodEnd] = el.headerDateFilterInputRight.value.split(' to ');
+        const [compPeriodStart, compPeriodEnd] = el.comparisonDateFilterInputRight.value.split(' to ');
+
+        if (!mainPeriodStart || !mainPeriodEnd || !compPeriodStart || !compPeriodEnd) {
+            container.innerHTML = `<div class="bg-yellow-50 border-l-4 border-yellow-400 text-yellow-700 p-4" role="alert"><p>Please select both Main Period and Comparison Period date ranges.</p></div>`;
+            return;
+        }
+
+        const baseData = allData.filter(d => {
+            return activeDimensionFilters.every(f => {
+                const rowValue = String(d[f.dimension] || '').toLowerCase();
+                const filterValue = String(f.value).toLowerCase();
+                switch (f.condition) {
+                    case 'contains': return rowValue.includes(filterValue);
+                    case 'not_contains': return !rowValue.includes(filterValue);
+                    case 'exact_match': return rowValue === filterValue;
+                    case 'not_exact_match': return rowValue !== filterValue;
+                    case 'starts_with': return rowValue.startsWith(filterValue);
+                    case 'ends_with': return rowValue.endsWith(filterValue);
+                    default: return true;
+                }
+            });
+        });
+
+        const period1Data = baseData.filter(d => d.date >= mainPeriodStart && d.date <= mainPeriodEnd);
+        const period2Data = baseData.filter(d => d.date >= compPeriodStart && d.date <= compPeriodEnd);
+
+        const groupByDimensions = templateConfig.dimensions.length > 0 ? templateConfig.dimensions : [templateConfig.dateColumn];
+        if (groupByDimensions.length === 0) {
+            container.innerHTML = `<div class="bg-yellow-50 border-l-4 border-yellow-400 text-yellow-700 p-4" role="alert"><p>No dimension selected for grouping. Please configure your template.</p></div>`;
+            return;
+        }
+
+        const measuresToCompare = templateConfig.measures.map(m => m.name);
+
+        const groupedPeriod1 = groupAndCalculateData(period1Data, groupByDimensions);
+        const groupedPeriod2 = groupAndCalculateData(period2Data, groupByDimensions);
+        const allKeys = new Set([...Object.keys(groupedPeriod1), ...Object.keys(groupedPeriod2)]);
+
+        let tableHTML = '<div class="bg-white p-4 rounded-lg shadow border border-green-500"><table class="w-full text-sm"><thead><tr class="border-b">';
+        groupByDimensions.forEach(dim => {
+            tableHTML += `<th class="p-3 text-left font-semibold text-slate-600">${dim}</th>`;
+        });
+
+        measuresToCompare.forEach(measureName => {
+            tableHTML += `<th class="p-3 text-right font-semibold text-slate-600">${measureName}</th>`;
+        });
+        tableHTML += '</tr></thead><tbody>';
+
+        allKeys.forEach(key => {
+            tableHTML += '<tr class="border-b last:border-b-0 hover:bg-slate-50">';
+            const keyParts = key.split(' | ');
+            groupByDimensions.forEach((dim, index) => {
+                tableHTML += `<td class="p-3 text-left text-slate-700">${keyParts[index]}</td>`;
+            });
+
+            const row1 = groupedPeriod1[key] || {};
+            const row2 = groupedPeriod2[key] || {};
+
+            measuresToCompare.forEach(measureName => {
+                const measureDef = templateConfig.measures.find(m => m.name === measureName);
+                const format = measureDef ? measureDef.format : 'number';
+
+                const val1 = row1[measureName] || 0;
+                const val2 = row2[measureName] || 0;
+                const diff = val1 - val2;
+                const ratio = val2 !== 0 ? (diff / val2) : (val1 !== 0 ? Infinity : 0);
+                
+                const lowerIsBetter = isLowerIsBetter(measureName);
+                let diffColor = 'text-slate-500';
+                if (diff > 0) diffColor = lowerIsBetter ? 'text-red-500' : 'text-green-500';
+                if (diff < 0) diffColor = lowerIsBetter ? 'text-green-500' : 'text-red-500';
+
+                tableHTML += `
+                    <td class="p-3 text-right">
+                        <div class="font-semibold text-slate-800">${formatComparisonValue(val1, format)}</div>
+                        <div class="text-xs text-slate-500">${formatComparisonValue(val2, format)}</div>
+                        <div class="text-xs ${diffColor}">
+                            ${diff > 0 ? '▲' : (diff < 0 ? '▼' : '')} ${(ratio * 100).toFixed(1)}%
+                        </div>
+                    </td>
+                `;
+            });
+            tableHTML += '</tr>';
+        });
+
+        tableHTML += '</tbody></table></div>';
+        container.innerHTML = tableHTML;
+    }
+
+    function calculateTotals(data) {
+        const totals = {};
+        const baseMeasures = templateConfig.measures.filter(m => !m.isCalculated).map(m => m.name);
+        
+        const dependencies = getFormulaDependencies();
+        const fieldsToSum = [...new Set([...baseMeasures, ...dependencies])];
+
+        fieldsToSum.forEach(m => {
+            totals[m] = data.reduce((sum, row) => sum + (row[m] || 0), 0);
+        });
+
+        const processedTotals = processCalculatedFields([totals]);
+        return processedTotals[0];
+    }
+
+    function processCalculatedFields(data) {
+        const calculatedMeasures = templateConfig.measures.filter(m => m.isCalculated);
+        if (calculatedMeasures.length === 0) return data;
+
+        // Memoization for expanded formulas to avoid re-computing
+        const memo = new Map();
+
+        function expandFormula(formula, depth = 0) {
+            if (depth > 10) { // Circular reference guard
+                console.error("Circular reference or formula too deep:", formula);
+                return "NaN";
+            }
+            if (memo.has(formula)) {
+                return memo.get(formula);
+            }
+
+            let expanded = formula;
+            // Use a regex to find mentioned calculated measures.
+            // Word boundaries (\b) were removed because they don't work well with non-ASCII characters.
+            const mentionedMeasures = calculatedMeasures.filter(m => {
+                const measureRegex = new RegExp(m.name.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'));
+                return measureRegex.test(expanded);
+            });
+            
+            // Sort by name length to replace longer names first (e.g., "Gross Cost" before "Cost")
+            mentionedMeasures.sort((a, b) => b.name.length - a.name.length);
+
+            mentionedMeasures.forEach(measure => {
+                const subFormula = expandFormula(measure.formula, depth + 1);
+                // Replace without word boundaries. Sorting by length should prevent most conflicts.
+                const measureRegex = new RegExp(measure.name.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'), 'g');
+                expanded = expanded.replace(measureRegex, `(${subFormula})`);
+            });
+                        
+            memo.set(formula, expanded);
+            return expanded;
+        }
+
+        // Sort base headers by length to handle cases like 'cost' and 'gross cost' correctly.
+        const sortedHeaders = csvHeaders.slice().sort((a, b) => b.length - a.length);
+
+        return data.map(row => {
+            const newRow = { ...row };
+            calculatedMeasures.forEach(measure => {
+                try {
+                    // 1. Fully expand the formula to only contain base columns
+                    const expandedFormula = expandFormula(measure.formula);
+
+                    // 2. Replace base column names with row data access.
+                    // The `sortedHeaders` ensures longer names are replaced first, preventing partial replacements.
+                    // Word boundaries (\b) were removed because they don't work well with non-ASCII characters.
+                    let formulaForEval = expandedFormula;
+                    sortedHeaders.forEach(header => {
+                        const headerRegex = new RegExp(header.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'), 'g');
+                        formulaForEval = formulaForEval.replace(headerRegex, `(newRow['${header}'] || 0)`);
+                    });
+                        
+                    // 3. Evaluate the final formula
+                    newRow[measure.name] = eval(formulaForEval);
+                } catch (e) {
+                    console.error(`Error evaluating formula for ${measure.name}: [${measure.formula}]`, e);
+                    newRow[measure.name] = NaN;
+                }
+            });
+            return newRow;
+        });
+    }
+
+    function groupAndCalculateData(data, groupByFields) {
+        if (!Array.isArray(groupByFields)) {
+            groupByFields = [groupByFields];
+        }
+        if (groupByFields.length === 0) return {};
+
+        const dependencies = getFormulaDependencies();
+        const baseMeasures = templateConfig.measures.filter(m => !m.isCalculated).map(m => m.name);
+        const fieldsToSum = [...new Set([...baseMeasures, ...dependencies])];
+
+        const grouped = {};
+
+        data.forEach(row => {
+            const key = groupByFields.map(field => row[field] || '(empty)').join(' | ');
+            if (!grouped[key]) {
+                grouped[key] = {};
+                groupByFields.forEach(field => {
+                    grouped[key][field] = row[field] || '(empty)';
+                });
+                fieldsToSum.forEach(fieldName => {
+                    grouped[key][fieldName] = 0;
+                });
+            }
+            fieldsToSum.forEach(fieldName => {
+                grouped[key][fieldName] += row[fieldName] || 0;
+            });
+        });
+
+        const aggregatedData = Object.values(grouped);
+        const processedAggregatedData = processCalculatedFields(aggregatedData);
+
+        const finalGrouped = {};
+        processedAggregatedData.forEach(row => {
+            const key = groupByFields.map(field => row[field] || '(empty)').join(' | ');
+            finalGrouped[key] = row;
+        });
+
+        return finalGrouped;
+    }
+
+    function formatNumber(num, format) {
+        if (!isFinite(num)) return '-'; // Handle Infinity and -Infinity
+
+        const numberToFormat = (num === undefined || num === null || isNaN(num)) ? 0 : num;
+
+        switch(format) {
+            case 'currency': return numberToFormat.toLocaleString(undefined, {style: 'currency', currency: currentCurrency, minimumFractionDigits: 0, maximumFractionDigits: 0});
+            case 'percent': return (numberToFormat * 100).toFixed(2) + '%';
+            case 'decimal': return numberToFormat.toFixed(2);
+            default: return numberToFormat.toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 0});
+        }
+    }
+
+        function setupGlobalFilters() {
+            const dateCol = templateConfig.dateColumn;
+            const dates = allData.map(d => new Date(d.date)).filter(d => !isNaN(d));
+            
+            let initialDefaultDateRange = [];
+            
+            // --- Period 1 (Global) Flatpickr Setup ---
+            if(headerFlatpickr) headerFlatpickr.destroy();
+            
+            if (mainPeriodSelectedRange) {
+                initialDefaultDateRange = mainPeriodSelectedRange;
+            } else if (dates.length > 0) {
+                const maxDate = new Date(Math.max.apply(null, dates));
+                const startMonth = maxDate.getMonth();
+                const startYear = maxDate.getFullYear();
+                const firstDayOfMonth = new Date(startYear, startMonth, 1);
+                initialDefaultDateRange = [firstDayOfMonth, maxDate];
+            }
+
+            headerFlatpickr = flatpickr(el.headerDateFilterInputRight, {
+                mode: "range",
+                dateFormat: "Y-m-d",
+                defaultDate: initialDefaultDateRange,
+                onClose: function(selectedDates, dateStr, instance) {
+                    mainPeriodSelectedRange = selectedDates;
+                    el.headerDateFilterInputRight.value = dateStr || uiTexts[currentLanguage].headerMainPeriod;
+                    debouncedUpdateAnalysis();
+                }
+            });
+            
+            // Ensure initial display reflects the default date range
+            if (headerFlatpickr.selectedDates.length === 2) {
+                 el.headerDateFilterInputRight.value = headerFlatpickr.formatDate(headerFlatpickr.selectedDates[0], "Y-m-d") + ' to ' + headerFlatpickr.formatDate(headerFlatpickr.selectedDates[1], "Y-m-d");
+            } else {
+                 el.headerDateFilterInputRight.value = uiTexts[currentLanguage].headerMainPeriod;
+            }
+
+            // --- Period 2 (Comparison) Flatpickr Setup ---
+            if(comparisonFlatpickrRight) comparisonFlatpickrRight.destroy();
+            
+            let initialDefaultComparisonRange = [];
+            if (comparisonPeriodSelectedRange) {
+                initialDefaultComparisonRange = comparisonPeriodSelectedRange;
+            } else {
+                // Set default comparison period based on uploaded files
+                let defaultComparisonMinDate = null;
+                let defaultComparisonMaxDate = null;
+
+                if (uploadedFileObjects.length >= 2) {
+                    defaultComparisonMinDate = uploadedFileObjects[1].minDate;
+                    defaultComparisonMaxDate = uploadedFileObjects[1].maxDate;
+                } else if (uploadedFileObjects.length === 1) {
+                    defaultComparisonMinDate = uploadedFileObjects[0].minDate;
+                    defaultComparisonMaxDate = uploadedFileObjects[0].maxDate;
+                }
+
+                if (defaultComparisonMinDate && defaultComparisonMaxDate) {
+                    initialDefaultComparisonRange = [defaultComparisonMinDate, defaultComparisonMaxDate];
+                }
+            }
+
+            comparisonFlatpickrRight = flatpickr(el.comparisonDateFilterInputRight, {
+                mode: "range",
+                dateFormat: "Y-m-d",
+                defaultDate: initialDefaultComparisonRange,
+                onClose: function(selectedDates, dateStr, instance) {
+                    comparisonPeriodSelectedRange = selectedDates;
+                    el.comparisonDateFilterInputRight.value = dateStr;
+                    debouncedUpdateAnalysis();
+                }
+            });
+
+            if (comparisonFlatpickrRight.selectedDates.length === 2) {
+                el.comparisonDateFilterInputRight.value = comparisonFlatpickrRight.formatDate(comparisonFlatpickrRight.selectedDates[0], "Y-m-d") + ' to ' + comparisonFlatpickrRight.formatDate(comparisonFlatpickrRight.selectedDates[1], "Y-m-d");
+            } else {
+                el.comparisonDateFilterInputRight.value = ''; // Set to empty string if no default
+            }
+            
+            // --- Dynamic Filters Setup ---
+            const dimensionSelect = document.getElementById('filter-dimension-select');
+            dimensionSelect.innerHTML = `<option value="" disabled selected>${uiTexts[currentLanguage].selectDimension}</option>`;
+            // translateElements(dimensionSelect.closest('div')); // Translate select options - not needed here as options are dynamic
+
+            const activeFiltersList = document.getElementById('active-filters-list');
+            activeFiltersList.innerHTML = '';
+            
+            // Populate dimension selector in the modal
+            templateConfig.dimensions.filter(d => d).forEach(dimension => {
+                 dimensionSelect.innerHTML += `<option value="${dimension}">${dimension}</option>`;
+            });
+
+            // Update Add Filter button state
+            const addFilterBtn = document.getElementById('add-new-filter-btn');
+            const valueInput = document.getElementById('filter-value-input');
+            
+            const checkAddButtonState = () => {
+                const dimSelected = dimensionSelect.value !== '';
+                const valueEntered = valueInput.value.trim() !== '';
+                addFilterBtn.disabled = !(dimSelected && valueEntered);
+            };
+
+            dimensionSelect.addEventListener('change', checkAddButtonState);
+            valueInput.addEventListener('input', checkAddButtonState);
+            
+            renderActiveDimensionFilters();
+        }
+
+    function getPresetDateRange(preset) {
+        const now = new Date();
+        const localYear = now.getFullYear();
+        const localMonth = now.getMonth();
+        const localDay = now.getDate();
+        
+        let start, end;
+
+        switch (preset) {
+            case 'yesterday':
+                start = new Date(Date.UTC(localYear, localMonth, localDay - 1));
+                end = start;
+                break;
+            case 'last_7_days':
+                start = new Date(Date.UTC(localYear, localMonth, localDay - 6));
+                end = new Date(Date.UTC(localYear, localMonth, localDay));
+                break;
+            case 'this_month':
+                start = new Date(Date.UTC(localYear, localMonth, 1));
+                end = new Date(Date.UTC(localYear, localMonth + 1, 0));
+                break;
+            case 'last_month':
+                start = new Date(Date.UTC(localYear, localMonth - 1, 1));
+                end = new Date(Date.UTC(localYear, localMonth, 0));
+                break;
+            default:
+                return null;
+        }
+        const formatDate = (date) => date.toISOString().split('T')[0];
+        return [formatDate(start), formatDate(end)];
+    }
+
+    function handleDatePresetChange() {
+        const preset = el.dateRangePresetSelect.value;
+        if (preset === 'custom') return;
+
+        const range = getPresetDateRange(preset);
+        if (range && headerFlatpickrRight) {
+            headerFlatpickrRight.setDate(range, true); // true triggers onChange
+        }
+    }
+    
+    function addDimensionFilter() {
+        const dimension = el.filterDimensionSelect.value;
+        const condition = el.filterConditionSelect.value;
+        const value = el.filterValueInput.value.trim();
+        if (!dimension || !value) return;
+        activeDimensionFilters.push({ id: nextFilterId++, dimension, condition, value });
+        renderActiveDimensionFilters();
+        el.filterValueInput.value = '';
+        el.filterDimensionSelect.value = '';
+        el.addNewFilterBtn.disabled = true;
+        debouncedUpdateAnalysis();
+    }
+
+    function renderActiveDimensionFilters() {
+        const filterHTML = activeDimensionFilters.map(f => `
+            <div class="px-2 py-1 bg-green-100 text-green-800 rounded-lg flex justify-between items-center text-xs font-medium">
+                <span>${f.dimension}: ${f.condition} "${f.value}"</span>
+                <button class="remove-filter-btn ml-2 text-red-600 hover:text-red-800" data-filter-id="${f.id}">✖</button>
+            </div>`).join('');
+        el.activeFiltersList.innerHTML = filterHTML;
+    }
+
+    // --- Left Panel Functions (from previous steps) ---
+    function handleFileSelection(event) {
+        const newFiles = Array.from(event.target.files);
+        if (!newFiles.length) return;
+
+        // Use a Map to add new files and replace existing ones with the same name.
+        const fileMap = new Map();
+        // 1. Add existing files
+        uploadedFileObjects.forEach(file => fileMap.set(file.name, file));
+        // 2. Add new files (will overwrite existing ones with same name)
+        newFiles.forEach(file => fileMap.set(file.name, file));
+        
+        uploadedFileObjects = Array.from(fileMap.values());
+        
+        event.target.value = ''; // Allow re-selecting the same file
+
+        processFiles(); // This function already contains the header check logic.
+    }
+
+
+
+    function renderFileManagementPage() {
+        let contentHTML = '<h2 class="text-2xl font-bold text-slate-700 mb-4">Uploaded CSV Files</h2>';
+
+        if (uploadedFileObjects.length === 0) {
+            contentHTML += `<div class="bg-white p-8 rounded-lg shadow text-center text-slate-500">No files uploaded yet. Use the "Add file" button to start.</div>`;
+            el.fileManagementPage.innerHTML = contentHTML;
+            return;
+        }
+        
+        let fileListHTML = '';
+        uploadedFileObjects.forEach(file => {
+            const fileSize = (file.size / 1024).toFixed(2);
+            let dateRangeHTML = '';
+            if (file.minDate && file.maxDate) {
+                dateRangeHTML = `
+                    <div class="text-xs text-slate-500 mt-1 flex items-center gap-1.5">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                        <span>${file.minDate} &rarr; ${file.maxDate}</span>
+                    </div>
+                `;
+            }
+
+            fileListHTML += `
+                <div class="p-3 border border-green-500 flex justify-between items-center gap-4 bg-white first:rounded-t-lg last:rounded-b-lg shadow-sm">
+                    <div class="flex flex-col text-sm min-w-0">
+                        <span class="font-medium truncate text-slate-800" title="${file.name}">${file.name}</span>
+                        <span class="text-slate-500 text-xs mt-1">${fileSize} KB</span>
+                        ${dateRangeHTML}
+                    </div>
+                    <button class="remove-file-btn p-2 rounded-full text-red-500 hover:bg-red-100 flex-shrink-0 interactive-button" data-filename="${file.name}">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-5 h-5"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                    </button>
+                </div>
+            `;
+        });
+        contentHTML += `<div class="space-y-2">${fileListHTML}</div>`;
+        el.fileManagementPage.innerHTML = contentHTML;
+
+        el.fileManagementPage.querySelectorAll('.remove-file-btn').forEach(btn => {
+            btn.addEventListener('click', handleRemoveFile);
+        });
+    }
+
+    function handleRemoveFile(event) {
+        const fileName = event.currentTarget.dataset.filename;
+        uploadedFileObjects = uploadedFileObjects.filter(f => f.name !== fileName);
+        renderFileManagementPage();
+        processFiles();
+    }
+
+    async function processFiles() {
+        if (uploadedFileObjects.length === 0) {
+            resetTemplateConfig();
+            return;
+        }
+        showToast('Processing files...', 'info');
+
+        try {
+            const allParsedResults = await Promise.all(
+                uploadedFileObjects.map(async (file) => {
+                    const encoding = await new Promise((resolve, reject) => {
+                        const reader = new FileReader();
+                        reader.onload = e => resolve(jschardet.detect(new Uint8Array(e.target.result)).encoding);
+                        reader.onerror = reject;
+                        reader.readAsArrayBuffer(file);
+                    });
+                    const text = await file.text(encoding);
+                    // Use dynamicTyping: false to prevent numbers from being parsed incorrectly before normalization
+                    return Papa.parse(text, { header: true, skipEmptyLines: true, dynamicTyping: false });
+                })
+            );
+
+            if (allParsedResults.length === 0) return;
+
+            const referenceHeaders = allParsedResults[0].meta.fields.filter(h => h);
+            let combinedData = [];
+
+            // Determine dateCol more robustly
+            let dateCol = templateConfig ? templateConfig.dateColumn : null;
+            if (!dateCol && referenceHeaders.length > 0) {
+                dateCol = referenceHeaders.find(h => h.toLowerCase().includes('date') || h.toLowerCase().includes('日付'));
+            }
+            // If still no dateCol, it will remain null, and date range calculation will be skipped. This is acceptable.
+
+            for (let i = 0; i < allParsedResults.length; i++) {
+                const result = allParsedResults[i];
+                const fileObject = uploadedFileObjects[i];
+                const currentHeaders = result.meta.fields.filter(h => h);
+                
+                if (JSON.stringify(referenceHeaders) !== JSON.stringify(currentHeaders)) {
+                    const fileName = uploadedFileObjects[i].name;
+                    uploadedFileObjects = uploadedFileObjects.filter(f => f.name !== fileName);
+                    renderFileManagementPage();
+                    throw new Error(`Header mismatch in file: ${fileName}. The file has been removed.`);
+                }
+
+                // Calculate date range for the file
+                if (dateCol && result.data.length > 0) {
+                    const dates = result.data
+                        .map(row => {
+                            const dateValue = row[dateCol];
+                            if (!dateValue) return null;
+                            const parts = dateValue.split(/[-/]/);
+                            if (parts.length !== 3) return null;
+                            return new Date(Date.UTC(parts[0], parts[1] - 1, parts[2]));
+                        })
+                        .filter(Boolean);
+
+                    if (dates.length > 0) {
+                        dates.sort((a, b) => a.getTime() - b.getTime());
+                        const formatDate = (date) => date.toISOString().split('T')[0];
+                        fileObject.minDate = formatDate(dates[0]);
+                        fileObject.maxDate = formatDate(dates[dates.length - 1]);
+                    } else {
+                        fileObject.minDate = null;
+                        fileObject.maxDate = null;
+                    }
+                }
+
+                combinedData = combinedData.concat(result.data);
+            }
+
+            allData = combinedData;
+            csvHeaders = referenceHeaders;
+            updateManageFilesButtonText();
+            
+            showToast(`${uploadedFileObjects.length} file(s) processed successfully.`, 'success');
+            setActiveView('files');
+            
+            if (templateConfig) {
+                normalizeData();
+                setupGlobalFilters();
+                updateAnalysis();
+            } else {
+                showTemplateConfig();
+            }
+
+        } catch (error) {
+            showInAppNotification(error.message, 'error');
+        }
+    }
+    
+
+    function showTemplateConfig() {
+        el.templateConfigSection.classList.remove('hidden');
+        renderColumnCheckboxes();
+        populateDateColumnSelect();
+        addLiveUpdateListeners(); // IMPORTANT: Activate live updates right after CSV is loaded
+
+        new Sortable(el.dimensionCheckboxList, {
+            animation: 150,
+            ghostClass: 'bg-green-100',
+            onEnd: () => {
+                debouncedUpdateAnalysis();
+            }
+        });
+
+        new Sortable(el.measureCheckboxList, {
+            animation: 150,
+            ghostClass: 'bg-green-100',
+            onEnd: () => {
+                debouncedUpdateAnalysis();
+            }
+        });
+        debouncedUpdateAnalysis();
+    }
+
+    function resetTemplateConfig() {
+        el.templateConfigSection.classList.add('hidden');
+        el.analysisReadyView.style.display = 'none';
+        el.initialSetupView.style.display = 'block';
+        el.fileList.innerHTML = '';
+        el.processingStatus.innerHTML = '';
+        uploadedFileObjects = []; csvHeaders = []; allData = []; templateConfig = null;
+        el.csvFilesInput.value = '';
+        tempCalculatedFields = [];
+        setActiveView('home');
+    }
+
+    function sortCheckboxList(listElement) {
+        const labels = Array.from(listElement.children);
+        labels.sort((a, b) => {
+            const aChecked = a.querySelector('input[type="checkbox"]').checked;
+            const bChecked = b.querySelector('input[type="checkbox"]').checked;
+            if (aChecked && !bChecked) return -1;
+            if (!aChecked && bChecked) return 1;
+            return 0;
+        });
+        labels.forEach(label => listElement.appendChild(label));
+    }
+
+    function renderColumnCheckboxes(checkedDimensions = new Set(), checkedMeasures = new Set()) {
+        const createListHTML = (headers, isMeasure, checkedSet) => {
+            return headers.map(header => {
+                const isChecked = checkedSet.has(header);
+                const formatSelectHTML = isMeasure ? `
+                    <select class="measure-format-select" style="display: ${isChecked ? 'inline-block' : 'none'};">
+                        <option value="number">Number</option>
+                        <option value="currency">Currency</option>
+                        <option value="percent">Percent</option>
+                        <option value="decimal">Decimal</option>
+                    </select>` : '';
+                return `
+            <label>
+                <input type="checkbox" class="form-checkbox" value="${header}" ${isChecked ? 'checked' : ''}>
+                <span class="ml-2 mr-2">${header}</span>
+                ${formatSelectHTML}
+            </label>`;
+            }).join('');
+        };
+
+        const filteredMeasureHeaders = csvHeaders.filter(h => !HIDDEN_MEASURE_KEYWORDS.some(keyword => h.toLowerCase().includes(keyword)));
+        el.dimensionCheckboxList.innerHTML = createListHTML(csvHeaders, false, checkedDimensions);
+        el.measureCheckboxList.innerHTML = createListHTML(filteredMeasureHeaders, true, checkedMeasures);
+
+        sortCheckboxList(el.dimensionCheckboxList);
+        sortCheckboxList(el.measureCheckboxList);
+
+        el.dimensionCheckboxList.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+            cb.addEventListener('change', () => {
+                sortCheckboxList(el.dimensionCheckboxList);
+                debouncedUpdateAnalysis();
+            });
+        });
+        // Event listeners are now handled by delegation in initEventListeners for the entire list
+    }
+
+    function populateDateColumnSelect() {
+        el.templateDateColumn.innerHTML = csvHeaders.map(h => `<option value="${h}">${h}</option>`).join('');
+        const dateCandidate = csvHeaders.find(h => h.toLowerCase().includes('date') || h.toLowerCase().includes('日付'));
+        
+        if(dateCandidate) {
+            el.templateDateColumn.value = dateCandidate;
+        } else if (csvHeaders.length > 0) {
+            // If no date candidate found, default to the first header
+            el.templateDateColumn.value = csvHeaders[0];
+        }
+        // If csvHeaders is empty, the select will remain empty, which is fine.
+    }
+
+    function filterCheckboxList(inputEl, listEl) {
+        const searchTerm = inputEl.value.toLowerCase();
+        listEl.querySelectorAll('label').forEach(label => {
+            label.style.display = label.textContent.toLowerCase().includes(searchTerm) ? 'flex' : 'none';
+        });
+    }
+
+    function handleTemplateFileSelection(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            try {
+                const loadedTemplate = JSON.parse(e.target.result);
+                templateConfig = loadedTemplate;
+                el.templateDateColumn.value = loadedTemplate.dateColumn;
+
+                // --- Dimensions ---
+                const dimNamesInTemplate = new Set(loadedTemplate.dimensions);
+                const otherDims = csvHeaders.filter(h => !dimNamesInTemplate.has(h));
+                const orderedDims = [...loadedTemplate.dimensions, ...otherDims];
+                el.dimensionCheckboxList.innerHTML = orderedDims.map(h => `
+                    <label>
+                        <input type="checkbox" class="form-checkbox" value="${h}" ${dimNamesInTemplate.has(h) ? 'checked' : ''}>
+                        <span class="ml-2 mr-2">${h}</span>
+                    </label>`).join('');
+
+                // --- Measures ---
+                el.measureCheckboxList.innerHTML = ''; // Clear
+                tempCalculatedFields = loadedTemplate.measures.filter(m => m.isCalculated);
+                const baseMeasureNamesInTemplate = new Set(loadedTemplate.measures.filter(m => !m.isCalculated).map(m => m.name));
+                const allPossibleMeasures = csvHeaders.filter(h => !HIDDEN_MEASURE_KEYWORDS.some(keyword => h.toLowerCase().includes(keyword)));
+                const otherMeasures = allPossibleMeasures.filter(h => !baseMeasureNamesInTemplate.has(h));
+
+                // Add measures from template in order
+                loadedTemplate.measures.forEach(measure => {
+                    if (measure.isCalculated) {
+                        addFieldToMeasureList(measure);
+                    } else {
+                        const formatSelectHTML = `
+                            <select class="measure-format-select" style="display: inline-block;">
+                                <option value="number" ${measure.format === 'number' ? 'selected' : ''}>Number</option>
+                                <option value="currency" ${measure.format === 'currency' ? 'selected' : ''}>Currency</option>
+                                <option value="percent" ${measure.format === 'percent' ? 'selected' : ''}>Percent</option>
+                                <option value="decimal" ${measure.format === 'decimal' ? 'selected' : ''}>Decimal</option>
+                            </select>`;
+                        const label = document.createElement('label');
+                        label.innerHTML = `
+                            <input type="checkbox" class="form-checkbox" value="${measure.name}" checked>
+                            <span class="ml-2 mr-2">${measure.name}</span>
+                            ${formatSelectHTML}`;
+                        el.measureCheckboxList.appendChild(label);
+                    }
+                });
+
+                // Add other base measures (unchecked)
+                otherMeasures.forEach(header => {
+                    const formatSelectHTML = `
+                        <select class="measure-format-select" style="display: none;">
+                            <option value="number">Number</option>
+                            <option value="currency">Currency</option>
+                            <option value="percent">Percent</option>
+                            <option value="decimal">Decimal</option>
+                        </select>`;
+                    const label = document.createElement('label');
+                    label.innerHTML = `
+                        <input type="checkbox" class="form-checkbox" value="${header}">
+                        <span class="ml-2 mr-2">${header}</span>
+                        ${formatSelectHTML}`;
+                    el.measureCheckboxList.appendChild(label);
+                });
+
+                // Re-add event listeners
+                el.measureCheckboxList.querySelectorAll('input[type="checkbox"]:not(:disabled)').forEach(cb => {
+                    cb.addEventListener('change', (e) => {
+                        const formatSelect = e.target.closest('label').querySelector('.measure-format-select');
+                        if (formatSelect) {
+                            formatSelect.style.display = e.target.checked ? 'inline-block' : 'none';
+                        }
+                        sortCheckboxList(el.measureCheckboxList);
+                    });
+                });
+                el.dimensionCheckboxList.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+                    cb.addEventListener('change', () => sortCheckboxList(el.dimensionCheckboxList));
+                });
+
+                initializeAnalysisView();
+                setupTargetSelect();
+                updateAnalysis();
+            } catch (err) { showInAppNotification('Could not parse template file.', 'error'); }
+        };
+        reader.readAsText(file);
+        event.target.value = ''; // Allow re-selecting the same file
+    }
+
+    function openSaveTemplateModal() {
+        el.modalTemplateNameInput.value = '';
+        el.saveTemplateModal.classList.remove('hidden');
+        el.saveTemplateModal.classList.add('flex');
+        el.modalTemplateNameInput.focus();
+    }
+
+    function closeSaveTemplateModal() {
+        el.saveTemplateModal.classList.add('hidden');
+        el.saveTemplateModal.classList.remove('flex');
+    }
+
+    function updateTemplateConfigFromUI() {
+        const getChecked = (list) => Array.from(list.querySelectorAll('input:checked')).map(cb => cb.value);
+        const dimensions = getChecked(el.dimensionCheckboxList);
+        
+        const measures = Array.from(el.measureCheckboxList.querySelectorAll('label'))
+            .filter(label => label.querySelector('input:checked'))
+            .map(label => {
+                const input = label.querySelector('input');
+                const value = input.value;
+                const select = label.querySelector('select');
+                
+                const calcField = tempCalculatedFields.find(f => f.name === value);
+                if (calcField) {
+                    // It's a calculated field, update its format from the UI
+                    calcField.format = select.value;
+                    return calcField;
+                } else { // This is a base measure
+                    return { name: value, format: select.value, isCalculated: false };
+                }
+            });
+
+        if (!el.templateDateColumn.value || (dimensions.length === 0 && measures.length === 0)) {
+            templateConfig = null; 
+            return;
+        }
+        templateConfig = { templateName: "Live Config", dateColumn: el.templateDateColumn.value, dimensions, measures };
+    }
+
+    function confirmSaveTemplate() {
+        const templateName = el.modalTemplateNameInput.value.trim();
+        if (!templateName) return showToast('Please enter a template name.', 'error');
+        updateTemplateConfigFromUI(); // Ensure templateConfig is up-to-date
+        if (!templateConfig) return showToast("Please select at least one date column, dimension, and measure.", 'error');
+
+        const blob = new Blob([JSON.stringify(templateConfig, null, 2)], { type: 'application/json' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `${templateName.replace(/\s+/g, '_')}.json`;
+        a.click();
+        URL.revokeObjectURL(a.href);
+        
+        closeSaveTemplateModal();
+        showToast(`Template "${templateName}" saved.`, 'success');
+        initializeAnalysisView(); // Start analysis after saving
+    }
+
+    function addCalculatedField() {
+        const name = el.calculatedFieldNameInput.value.trim();
+        const formula = el.formulaInput.innerText.trim();
+        const format = el.calculatedFieldFormatSelect.value;
+        if (!name || !formula) return showToast('Please provide a name and a formula.', 'error');
+
+        // Check for conflicts only with VISIBLE headers and other calculated fields.
+        const visibleHeaders = csvHeaders.filter(h => !HIDDEN_MEASURE_KEYWORDS.some(keyword => h.toLowerCase().includes(keyword)));
+        if (visibleHeaders.includes(name) || tempCalculatedFields.some(f => f.name === name)) {
+            return showToast(`A field with the name "${name}" already exists.`, 'error');
+        }
+
+        const newField = { name, formula, isCalculated: true, format };
+        tempCalculatedFields.push(newField);
+        addFieldToMeasureList(newField);
+
+        el.calculatedFieldNameInput.value = '';
+        el.formulaInput.innerText = '';
+        sortCheckboxList(el.measureCheckboxList);
+        debouncedUpdateAnalysis();
+    }
+
+    function addFieldToMeasureList(field) {
+        const label = document.createElement('label');
+        
+        const formatSelectHTML = `
+            <select class="measure-format-select" style="display: inline-block;">
+                <option value="number" ${field.format === 'number' ? 'selected' : ''}>Number</option>
+                <option value="currency" ${field.format === 'currency' ? 'selected' : ''}>Currency</option>
+                <option value="percent" ${field.format === 'percent' ? 'selected' : ''}>Percent</option>
+                <option value="decimal" ${field.format === 'decimal' ? 'selected' : ''}>Decimal</option>
+            </select>`;
+
+        const calculatorIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-1 text-emerald-600 flex-shrink-0"><rect x="4" y="2" width="16" height="20" rx="2" ry="2"></rect><line x1="8" y1="6" x2="16" y2="6"></line><line x1="12" y1="10" x2="12" y2="18"></line><line x1="8" y1="14" x2="16" y2="14"></line></svg>`;
+
+        label.innerHTML = `
+            <input type="checkbox" class="form-checkbox" value="${field.name}" checked>
+            ${calculatorIcon}
+            <span class="ml-1 mr-2">${field.name}</span>
+            ${formatSelectHTML}
+            <button type="button" class="delete-calc-field-btn" data-field-name="${field.name}">✖</button>
+        `;
+        el.measureCheckboxList.appendChild(label);
+    }
+
+    function deleteCalculatedField(fieldName, labelElement) {
+        tempCalculatedFields = tempCalculatedFields.filter(f => f.name !== fieldName);
+        labelElement.remove();
+    }
+
+    function handleFormulaInput() {
+        const content = el.formulaInput.innerText;
+        const tokens = content.split(/([+\-*/()])/);
+        const lastTerm = tokens[tokens.length - 1].trimStart();
+
+        if (lastTerm) {
+            const baseFields = csvHeaders.filter(h => !HIDDEN_MEASURE_KEYWORDS.some(keyword => h.toLowerCase().includes(keyword)));
+            const allFields = [...new Set([...baseFields, ...tempCalculatedFields.map(f => f.name)])];
+            const suggestions = allFields.filter(h => 
+                h.toLowerCase().startsWith(lastTerm.toLowerCase())
+            );
+            showSuggestions(suggestions, lastTerm.length);
+        } else {
+            el.formulaSuggestions.classList.add('hidden');
+        }
+    }
+
+    function showSuggestions(suggestions, charsToRemove) {
+        if (!suggestions.length) {
+            el.formulaSuggestions.classList.add('hidden');
+            return;
+        }
+        el.formulaSuggestions.innerHTML = suggestions.map(s => `<div class="suggestion-item">${s}</div>`).join('');
+        el.formulaSuggestions.classList.remove('hidden');
+
+        el.formulaSuggestions.querySelectorAll('.suggestion-item').forEach(item => {
+            item.onclick = () => {
+                const currentText = el.formulaInput.innerText;
+                const newText = currentText.substring(0, currentText.length - charsToRemove) + item.textContent + ' ';
+                el.formulaInput.innerText = newText;
+                el.formulaSuggestions.classList.add('hidden');
+                el.formulaInput.focus();
+                const range = document.createRange();
+                const sel = window.getSelection();
+                range.selectNodeContents(el.formulaInput);
+                range.collapse(false);
+                sel.removeAllRanges();
+                sel.addRange(range);
+            };
+        });
+    }
+
+    function handleTargetChange() {
+        globalTarget.measureName = el.targetMeasureSelect.value;
+        globalTarget.value = parseFloat(el.targetValueInput.value) || null;
+        debouncedUpdateAnalysis();
+    }
+
+    function updateUIForLanguage() {
+        currentLanguage = el.languageToggle.checked ? 'en' : 'ja';
+        document.querySelectorAll('[data-i18n]').forEach(elem => {
+            const key = elem.dataset.i18n;
+            if (uiTexts[currentLanguage][key]) {
+                elem.textContent = uiTexts[currentLanguage][key];
+            }
+            const placeholderKey = elem.dataset.i18nPlaceholder;
+            if (placeholderKey && uiTexts[currentLanguage][placeholderKey]) {
+                elem.placeholder = uiTexts[currentLanguage][placeholderKey];
+            }
+        });
+        renderActiveView();
+        updateManageFilesButtonText();
+    }
+
+    function showToast(message, type = 'info') {
+        const container = document.getElementById('toast-container');
+        const toast = document.createElement('div');
+        toast.className = `toast ${type}`;
+        toast.textContent = message;
+        container.appendChild(toast);
+
+        setTimeout(() => toast.classList.add('show'), 10); // Fade in
+
+        setTimeout(() => {
+            toast.classList.remove('show');
+            toast.addEventListener('transitionend', () => toast.remove());
+        }, 3000); // Fade out after 3 seconds
+    }
+
+    function showInAppNotification(message, type = 'info') {
+        const panel = document.getElementById('notification-panel');
+        const content = document.getElementById('notification-content');
+        const messageEl = document.getElementById('notification-message');
+
+        messageEl.textContent = message;
+
+        // Reset classes
+        content.classList.remove('bg-red-100', 'text-red-800', 'bg-green-100', 'text-green-800', 'bg-blue-100', 'text-blue-800');
+
+        // Apply new classes based on type
+        if (type === 'error') {
+            content.classList.add('bg-red-100', 'text-red-800');
+        } else if (type === 'success') {
+            content.classList.add('bg-green-100', 'text-green-800');
+        } else { // info
+            content.classList.add('bg-blue-100', 'text-blue-800');
+        }
+
+        panel.classList.remove('hidden');
+
+        // Auto-hide after 5 seconds
+        setTimeout(() => {
+            panel.classList.add('hidden');
+        }, 5000);
+    }
+
+    function updateManageFilesButtonText() {
+        if (el.manageFilesBtn) {
+            const fileCount = uploadedFileObjects.length;
+            const spanElement = el.manageFilesBtn.querySelector('span');
+            if (spanElement) {
+                const translatedText = uiTexts[currentLanguage].manageFiles;
+                // Preserve the original text and add a styled badge for the count
+                spanElement.innerHTML = `${translatedText} <span class="ml-2 px-2 py-0.5 bg-green-500 text-white text-xs font-bold rounded-full">${fileCount}</span>`;
+            }
+        }
+    }
+
+    const debounce = (func, delay) => {
+        let timeout;
+        return (...args) => {
+            clearTimeout(timeout);
+            timeout = setTimeout(() => func.apply(this, args), delay);
+        };
+    };
+    const debouncedUpdateAnalysis = debounce(updateAnalysis, 500);
+
+</script>
+</body>
+</html>

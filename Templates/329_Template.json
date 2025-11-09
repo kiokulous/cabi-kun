@@ -1,0 +1,73 @@
+{
+  "templateName": "329_Template",
+  "dateColumn": "report_date",
+  "dimensions": [
+    "media",
+    "campaign_name",
+    "adgroup_name"
+  ],
+  "measures": [
+    {
+      "name": "cost",
+      "format": "currency"
+    },
+    {
+      "name": "impression",
+      "format": "number"
+    },
+    {
+      "name": "click",
+      "format": "number"
+    },
+    {
+      "name": "CTR",
+      "operand1": "click",
+      "operator": "/",
+      "operand2": "impression",
+      "format": "percent"
+    },
+    {
+      "name": "CPC",
+      "operand1": "cost",
+      "operator": "/",
+      "operand2": "click",
+      "format": "currency"
+    },
+    {
+      "name": "媒体CV",
+      "format": "number"
+    },
+    {
+      "name": "媒体CVR",
+      "operand1": "媒体CV",
+      "operator": "/",
+      "operand2": "click",
+      "format": "percent"
+    },
+    {
+      "name": "媒体CPA",
+      "operand1": "cost",
+      "operator": "/",
+      "operand2": "媒体CV",
+      "format": "currency"
+    },
+    {
+      "name": "アドエビスCV（合計）",
+      "format": "number"
+    },
+    {
+      "name": "アドエビスCVR（合計）",
+      "operand1": "アドエビスCV（合計）",
+      "operator": "/",
+      "operand2": "click",
+      "format": "percent"
+    },
+    {
+      "name": "アドエビスCPA（合計）",
+      "operand1": "cost",
+      "operator": "/",
+      "operand2": "アドエビスCV（合計）",
+      "format": "currency"
+    }
+  ]
+}
